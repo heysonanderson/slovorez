@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <cstddef>
 #include <vector>
 
@@ -18,13 +19,12 @@ enum class TokenType {
     PNCTTN,
     RUWORD
 };
-constexpr const char* SyntaxPartTypeStr[] = {
+constexpr const char* TokenTypeStr[] = {
     "ENWORD",
     "NUMBER",
     "PNCTTN",
     "RUWORD"
 };
-
 
 typedef struct {
     char data[128];
@@ -34,6 +34,7 @@ typedef struct {
 
 typedef struct {
     std::vector<Token> tokens;
+    Token* last_token;
     unsigned char buffer[4];
     size_t bytes_expected;
     size_t bytes_gathered;
@@ -42,5 +43,6 @@ typedef struct {
 void _slovorez_lexer_reset_ctx(LexerContext* lctx);
 void slovorez_lexer_init(LexerContext* lctx, size_t token_num = 1024);
 void slovorez_lexer_char(LexerContext* lctx, unsigned char c);
+void slovorez_lexer_finish(LexerContext* lctx);
 
 #endif // SLOVOREZ_LEXER_H

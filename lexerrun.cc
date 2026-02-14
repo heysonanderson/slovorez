@@ -21,6 +21,17 @@ int main(void)
     {
         slovorez_lexer_char(&lctx, (unsigned char)c);
     }
+    slovorez_lexer_finish(&lctx);
+    for (int i = 0; i < lctx.tokens.size(); ++i)
+    {
+        fprintf(
+            stdout,
+            "%s SIZE=%-3d %s\n",
+            TokenTypeStr[static_cast<int>(lctx.tokens[i].type)],
+            lctx.tokens[i].size,
+            lctx.tokens[i].data
+        );
+    }
 
     fclose(f);
     return 0;

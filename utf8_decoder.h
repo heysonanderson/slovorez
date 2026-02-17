@@ -5,10 +5,10 @@
 #include <cstdint>
 
 typedef struct UTF8Char {
-    char data[4];
+    unsigned char data[4];
     size_t size;
 
-    inline uint32_t get_binary_num() const
+    inline uint32_t get_bval() const
     {
         uint32_t value = 0;
         for (int i = 0; i < this->size; ++i)
@@ -16,17 +16,6 @@ typedef struct UTF8Char {
             value = (value << 8) | (unsigned char)this->data[i];
         }
         return value;
-    }
-    inline bool in_range(uint32_t low, uint32_t high) const
-    {
-        uint32_t value = this->get_binary_num();
-        return value >= low && value <= high;
-    }
-
-    inline bool operator==(uint32_t other) const
-    {
-        uint32_t value = this->get_binary_num();
-        return value == other;
     }
 } UTF8Char;
 

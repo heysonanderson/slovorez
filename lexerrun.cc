@@ -2,6 +2,21 @@
 #include <clocale>
 #include "text_lexer.h"
 
+void print_token(Token* token)
+{
+    fprintf(
+        stdout,
+        "%s SIZE=%-3d [ ",
+        TokenTypeStr[static_cast<int>(token->type)],
+        token->size
+    );
+    for (int i = 0; i < token->size; ++i)
+    {
+        fprintf(stdout, "'%.*s' ", token->data[i].size, token->data[i].data);
+    }
+    fprintf(stdout, "]\n");
+}
+
 int main(void)
 {
     setlocale(LC_ALL, "");
@@ -19,28 +34,11 @@ int main(void)
     int c;
     while ((c = fgetc(f)) != EOF)
     {
-        slovorez_lexer_char(&lctx, (unsigned char)c);
-    }
-    // OUTPUT
-    for (int i = 0; i < lctx.tokens.size(); ++i)
-    {
-        fprintf(
-            stdout,
-            "%s SIZE=%-3d %s [ ",
-            TokenTypeStr[static_cast<int>(lctx.tokens[i].type)],
-            lctx.tokens[i].size,
-            lctx.tokens[i].data
-        );
-        for (int j = 0; j < lctx.tokens[i].size; ++j)
+        if (slovorez_lexer_token_get(&lctx, (unsigned char)c))
         {
-            fprintf(stdout, "'%c", lctx.tokens[i].data[j]);
-            if ((lctx.tokens[i].data[j] & FIRST_3BIT_MASK) == UTF8_2BYTE_SGNT)
-            {
-                fprintf(stdout, "%c", lctx.tokens[i].data[++j]);
-            }
-            fprintf(stdout, "' ");
+            Token* token = &lctx.tokens.back();
+            print_token(token);
         }
-        fprintf(stdout, "]\n");
     }
     fclose(f);
     return 0;

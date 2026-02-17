@@ -1,12 +1,5 @@
 #include "text_lexer.h"
 
-void slovorez_lexer_init(LexerContext* lctx, size_t token_num)
-{
-    lctx->tokens.reserve(token_num);
-    memset(&lctx->ctxtoken, 0, sizeof(Token));
-    slovorez_utf8_decoder_char_reset(&lctx->utf8c);
-}
-
 bool _slovorez_lexer_is_enletter(unsigned char c)
 {
     return (c >= ASCII_LETTER_A && c <= ASCII_LETTER_Z) || (c >= ASCII_LETTER_a && c <= ASCII_LETTER_z);
@@ -20,6 +13,11 @@ bool _slovorez_lexer_is_number(unsigned char c)
 bool _slovorez_lexer_is_ruletter(const UTF8Char& utf8c)
 {
     return utf8c.in_range(UTF8_RU_LETTERS_RANGE_START, UTF8_RU_LETTERS_RANGE_END) || utf8c == UTF8_RU_UPPERCASE_LETTER_IO || utf8c == UTF8_RU_LOWERCASE_LETTER_IO;
+}
+
+bool _slovorez_lexer_is_extended_punctuation(const UTF8Char& utf8c)
+{
+    return utf8c == UTF8_NUMERO_SIGN || utf8c == UTF8_LEFT_ANGLE_QUOTATION || utf8c == UTF8_RIGHT_ANGLE_QUOTATION || utf8c == UTF8_MIDDLE_DOT || utf8c.in_range(UTF8_3BYTE_PNCTTN_RANGE_START, UTF8_3BYTE_PNCTTN_RANGE_END);
 }
 
 void _slovorez_lexer_token_insert_utf8_char(Token* token, UTF8Char* utf8c)
@@ -72,11 +70,34 @@ void _slovorez_lexer_new_token(LexerContext* lctx)
         }
         case 2:
         {
-            lctx->ctxtoken.type = TokenType::RUWORD;
+            if (_slovorez_lexer_is_extended_punctuation(lctx->utf8c))
+            {
+                lctx->ctxtoken.type = TokenType::PNCTTN;
+            }
+            else if (lctx->utf8c == UTF8_NO_BREAK_SPACE)
+            {
+                lctx->ctxtoken.type = TokenType::WRDSPC;
+            }
+            else
+            {
+                lctx->ctxtoken.type = TokenType::RUWORD;
+            }
             _slovorez_lexer_token_insert_utf8_char(&lctx->ctxtoken, &lctx->utf8c);
             break;
         }
         case 3:
+        {
+            if (_slovorez_lexer_is_extended_punctuation(lctx->utf8c))
+            {
+                lctx->ctxtoken.type = TokenType::PNCTTN;
+            }
+            else
+            {
+                lctx->ctxtoken.type = TokenType::UNKNWN;
+            }
+            _slovorez_lexer_token_insert_utf8_char(&lctx->ctxtoken, &lctx->utf8c);
+            break;
+        }
         case 4:
         {
             lctx->ctxtoken.type = TokenType::UNKNWN;
@@ -84,6 +105,13 @@ void _slovorez_lexer_new_token(LexerContext* lctx)
             break;
         }
     }
+}
+
+void slovorez_lexer_init(LexerContext* lctx, size_t token_num)
+{
+    lctx->tokens.reserve(token_num);
+    memset(&lctx->ctxtoken, 0, sizeof(Token));
+    slovorez_utf8_decoder_char_reset(&lctx->utf8c);
 }
 
 bool slovorez_lexer_token_get(LexerContext* lctx, unsigned char c)

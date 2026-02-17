@@ -21,6 +21,15 @@ constexpr uint32_t UTF8_RU_LETTERS_RANGE_END   = 0xD18F;
 constexpr uint32_t UTF8_RU_UPPERCASE_LETTER_IO = 0xD081;
 constexpr uint32_t UTF8_RU_LOWERCASE_LETTER_IO = 0xD191;
 
+constexpr uint32_t UTF8_NO_BREAK_SPACE          = 0xC2A0;
+constexpr uint32_t UTF8_LEFT_ANGLE_QUOTATION    = 0xC2AB;
+constexpr uint32_t UTF8_RIGHT_ANGLE_QUOTATION   = 0xC2BB;
+constexpr uint32_t UTF8_MIDDLE_DOT              = 0xC2B7;
+
+constexpr uint32_t UTF8_3BYTE_PNCTTN_RANGE_START    = 0xE28090;
+constexpr uint32_t UTF8_3BYTE_PNCTTN_RANGE_END      = 0xE280A7;
+constexpr uint32_t UTF8_NUMERO_SIGN                 = 0xE28496;
+
 enum class TokenType {
     NOTTKN,         ///< Not a token
     WRDSPC,         ///< Word spacing
@@ -57,6 +66,7 @@ typedef struct {
 bool _slovorez_lexer_is_enletter(unsigned char c);
 bool _slovorez_lexer_is_number(unsigned char c);
 bool _slovorez_lexer_is_ruletter(const UTF8Char& utf8c);
+bool _slovorez_lexer_is_extended_punctuation(const UTF8Char& utf8c);
 void _slovorez_lexer_token_insert_utf8_char(Token* token, UTF8Char* utf8c);
 void _slovorez_lexer_new_token(LexerContext* lctx);
 void _slovorez_lexer_token_finalize(LexerContext* lctx);

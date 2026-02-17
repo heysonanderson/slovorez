@@ -2,24 +2,19 @@
 #include <clocale>
 #include "text_lexer.h"
 
-void print_tokens(const std::vector<Token>& tokens)
+void print_token(Token* token)
 {
-    for (int i = 0; i < tokens.size(); ++i)
+    fprintf(
+        stdout,
+        "%s SIZE=%-3d [ ",
+        TokenTypeStr[static_cast<int>(token->type)],
+        token->size
+    );
+    for (int i = 0; i < token->size; ++i)
     {
-        fprintf(
-            stdout,
-            "%s SIZE=%-3d %s [ ",
-            TokenTypeStr[static_cast<int>(tokens[i].type)],
-            tokens[i].size,
-            tokens[i].data
-        );
-        for (int j = 0; j < tokens[i].size; ++j)
-        {
-            fprintf(stdout, "'%c", tokens[i].data[j]);
-            fprintf(stdout, "' ");
-        }
-        fprintf(stdout, "]\n");
+        fprintf(stdout, "'%.*s' ", token->data[i].size, token->data[i].data);
     }
+    fprintf(stdout, "]\n");
 }
 
 int main(void)
@@ -39,7 +34,11 @@ int main(void)
     int c;
     while ((c = fgetc(f)) != EOF)
     {
-        slovorez_lexer_token_get(&lctx, (unsigned char)c);
+        if (slovorez_lexer_token_get(&lctx, (unsigned char)c))
+        {
+            Token* token = &lctx.tokens.back();
+            print_token(token);
+        }
     }
     fclose(f);
     return 0;

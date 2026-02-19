@@ -4,6 +4,19 @@
 
 void print_token(Token* token)
 {
+    if (token->type != TokenType::RUWORD)
+    {
+        return;
+    }
+
+    for (int i = 0; i < token->size; ++i)
+    {
+        fprintf(stdout, "%.*s", token->data[i].size, token->data[i].data);
+    }
+
+    fprintf(stdout, " ");
+
+    /*
     fprintf(
         stdout,
         "%s SIZE=%-3d [ ",
@@ -15,6 +28,7 @@ void print_token(Token* token)
         fprintf(stdout, "'%.*s' ", token->data[i].size, token->data[i].data);
     }
     fprintf(stdout, "]\n");
+    */
 }
 
 int main(void)
@@ -22,7 +36,7 @@ int main(void)
     setlocale(LC_ALL, "");
 
     FILE *f = nullptr;
-    f = fopen("../text.txt", "r"); // Temp. hardcoded file - change later
+    f = fopen("text.txt", "r"); // Temp. hardcoded file - change later
     if (f == nullptr)
     {
         fprintf(stderr, "Could not open text.txt file\n");

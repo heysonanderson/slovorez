@@ -21,3 +21,34 @@ cmake .. && cmake --build .
 # Run Lexer
 ./lexer
 ```
+
+### Python installation
+
+#### Navigate to project root
+
+```bash
+cd slovorez/
+```
+
+#### Activate venv (conda)
+
+```bash
+conda activate new_env
+```
+
+#### Install dependedncies
+```bash
+# CPU 
+pip install ".[tf]"
+
+# Tensorflow GPU
+pip install ".[tf-gpu]"
+
+# PyTorch GPU
+pip install ".[torch]"
+```
+
+#### Run demo
+```bash
+python -m src.main
+```

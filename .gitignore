@@ -1,1 +1,7 @@
 build/
+*.egg-info
+*.pycache
+*__pycache__
+*.pyc
+data/dictionaries/*.json
+data/dictionaries/*synth.txt

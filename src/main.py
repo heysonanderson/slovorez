@@ -1,8 +1,23 @@
 from slovorez.core import cache_utils, wrapper
-from slovorez.core.models import CHAR_VOCAB, UPOS, UNK_ID, morphemes_bies
+from slovorez.core.models import CHAR_VOCAB, UPOS, UNK_ID, morphemes_bies, morphemes_vocab
 from slovorez.io import loaders
 
 import os
+from pathlib import Path
+
+
+def get_project_path(relative_path):
+    script_dir = Path(__file__).parent.absolute()
+    project_root = script_dir.parent
+    full_path = project_root / relative_path
+    return full_path
+
+tikhonov_path = get_project_path("data/dictionaries/tikhonov-morphemes.json")
+model_path = get_project_path("data/ml/models/resnet-deep-4b-ef-2048-80-0.4-tikh-synth.keras")
+
+os.makedirs(tikhonov_path.parent, exist_ok=True)
+os.makedirs(model_path.parent, exist_ok=True)
+
 
 lex = wrapper.Lexer()
 text = lex.run()
@@ -16,10 +31,10 @@ text = lex.run()
 stream = cache_utils.to_token_stream(text)
 
 # CREATING INITIAL DICT
-if not os.path.exists("./data/dictionaries/tikhonov-morphemes.json"):
+if not os.path.exists(tikhonov_path):
     loaders.parse_tikhonov_txt()
 
-cache = loaders.load_json("./data/dictionaries/tikhonov-morphemes.json")
+cache = loaders.load_json(tikhonov_path)
 not_in_cache, missing_count = cache_utils.find_uncached(stream, cache)
 
 
@@ -35,7 +50,7 @@ from keras.utils import pad_sequences
 from slovorez.ml.layers import *
 
 # LOADING MORPHEME-SEGMENTATION MODEL
-model: keras.Model = keras.models.load_model("./data/ml/models/resnet-deep-4b-ef-2048-80-0.4-tikh-synth.keras", compile=False)
+model: keras.Model = keras.models.load_model(model_path, compile=False)
 
 # PROCESSING CHAR TOKENS
 char_tokenized = [[CHAR_VOCAB.get(c, UNK_ID) for c in token] for token in not_in_cache]
@@ -71,7 +86,7 @@ def prediction_to_string(word, word_predictions, reverse_morphemes_bies):
 
         if label.startswith("S-"):
             morph_type = label[2:] if '-' in label else label
-            segments.append(f"{word[i]}({morph_type})")
+            segments.append((word[i], morphemes_vocab[morph_type]))
             i += 1
             
         elif label.startswith("B-"):
@@ -96,23 +111,26 @@ def prediction_to_string(word, word_predictions, reverse_morphemes_bies):
 
             end_idx = min(i, len(word))
             seg_text = ''.join(word[start:end_idx])
-            segments.append(f"{seg_text}({morph_type})")
+            segments.append((seg_text, morphemes_vocab[morph_type]))
             
         else:
             morph_type = label.split('-', 1)[-1] if '-' in label else label
             if i < len(word):
-                segments.append(f"{word[i]}({morph_type})")
+                segments.append((word[i], morphemes_vocab[morph_type]))
             i += 1
     
-    return '|'.join(segments)
+    return segments
 
 
 
 reverse_morphemes_bies = { v: k for k, v in morphemes_bies.items() }
+reverse_morphemes_vocab = { v: k for k, v in morphemes_vocab.items() }
 
 for word_predictions, word in zip(all_predictions[:100], not_in_cache[:100]):
     segmented_word = prediction_to_string(word, word_predictions, reverse_morphemes_bies)
-    print(f"{word} ----> {segmented_word}")
+    strings = [f"{seg}|({reverse_morphemes_vocab[seg_type]})" for seg, seg_type in segmented_word]
+    f = "|".join(strings)
+    print(f"{word} ----> {f}")
 
 
 # PRINT SOME STATS

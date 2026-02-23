@@ -5,3 +5,8 @@ build/
 *.pyc
 data/dictionaries/*.json
 data/dictionaries/*synth.txt
+myenv/
+venv/
+env/
+*.pstat
+large.txt

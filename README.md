@@ -39,13 +39,13 @@ conda activate new_env
 #### Install dependedncies
 ```bash
 # CPU 
-pip install ".[tf]"
+pip install .[tf]
 
 # Tensorflow GPU
-pip install ".[tf-gpu]"
+pip install .[tf-gpu]
 
 # PyTorch GPU
-pip install ".[torch]"
+PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cu130 pip install .[torch]
 ```
 
 #### Run demo

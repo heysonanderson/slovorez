@@ -5,7 +5,6 @@ from slovorez.io import loaders
 import os
 from pathlib import Path
 
-
 def get_project_path(relative_path):
     script_dir = Path(__file__).parent.absolute()
     project_root = script_dir.parent
@@ -19,8 +18,35 @@ os.makedirs(tikhonov_path.parent, exist_ok=True)
 os.makedirs(model_path.parent, exist_ok=True)
 
 
-lex = wrapper.Lexer()
-text = lex.run()
+import slovorezCXX
+
+# removed implementation
+#
+#lex = wrapper.Lexer()
+#rutokens = wrapper.Lexer.run(txt)
+
+txt = "HELLO ПРИВЕТ Welcome КАК and such and ДЕЛА so on. Я сижу в своей комнате, в обиталище шума всей квартиры. Слышу, как хлопают все двери, из-за их шума я избавлен только от шагов тех, кто в них проходит, даже когда в кухне захлопывается печная заслонка, я это слышу."
+
+sentencer = slovorezCXX.Sentencer(txt)
+rutokens = []
+while(True):
+    batch = sentencer.get_batch()
+    if not batch:
+        break
+
+    for token in batch:
+        if token.type == slovorezCXX.TokenType.RUWORD:
+            rutokens.append(token)
+
+text = ""
+for rutoken in rutokens:
+    text = text + rutoken.get_str() + " "
+
+    for utf8c in rutoken.data:
+        # utf8c.data for raw bytes
+        print(utf8c.char, end='')
+
+    print()
 
 
 #######################

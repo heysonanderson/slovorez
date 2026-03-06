@@ -44,6 +44,13 @@ inline void slovorez_utf8_decoder_char_reset(UTF8Char* utf8c)
 
 inline bool slovorez_utf8_decoder_char_get(UTF8Char* utf8c, unsigned char c)
 {
+    if (utf8c->size >= 4)
+    {
+        slovorez_utf8_decoder_char_reset(utf8c);
+    }
+    // issue unresolved.
+    // segfaults without if check-reset.
+    // can be caused by slovorez_utf8_decoder_char_size receiving improper signature
     utf8c->data[utf8c->size++] = c;
     return (utf8c->size == slovorez_utf8_decoder_char_size(utf8c->data[0]));
 }

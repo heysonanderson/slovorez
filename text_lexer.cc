@@ -13,7 +13,7 @@ static inline void _slovorez_lexer_new_token(LexerContext* lctx)
 
 static inline void _slovorez_lexer_token_finalize(LexerContext* lctx)
 {
-    lctx->tokens.push_back(std::move(lctx->ctxtoken));
+    lctx->rtoken = lctx->ctxtoken;
     memset(&lctx->ctxtoken, 0, sizeof(Token));
 }
 
@@ -53,9 +53,9 @@ static bool _slovorez_lexer_token_try_finalize(LexerContext* lctx)
     return false;
 }
 
-void slovorez_lexer_init(LexerContext* lctx, size_t token_num)
+void slovorez_lexer_init(LexerContext* lctx)
 {
-    lctx->tokens.reserve(token_num);
+    memset(&lctx->rtoken, 0, sizeof(Token));
     memset(&lctx->ctxtoken, 0, sizeof(Token));
     slovorez_utf8_decoder_char_reset(&lctx->utf8c);
 }
@@ -66,7 +66,7 @@ bool slovorez_lexer_token_get(LexerContext* lctx, unsigned char c)
     {
         return false;
     }
-    bool token_ready = _slovorez_lexer_token_try_finalize(lctx) && !lctx->tokens.empty();
+    bool token_ready = _slovorez_lexer_token_try_finalize(lctx);
     slovorez_utf8_decoder_char_reset(&lctx->utf8c);
     return token_ready;
 }

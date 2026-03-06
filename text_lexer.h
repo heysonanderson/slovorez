@@ -36,12 +36,12 @@ typedef struct {
 } Token;
 
 typedef struct {
-    std::vector<Token> tokens;
+    Token rtoken;
     Token ctxtoken;
     UTF8Char utf8c;
 } LexerContext;
 
-void slovorez_lexer_init(LexerContext* lctx, size_t token_num = 1024);
+void slovorez_lexer_init(LexerContext* lctx);
 bool slovorez_lexer_token_get(LexerContext* lctx, unsigned char c);
 
 static TokenType slovorez_get_utf8_tt(const UTF8Char& utf8c)

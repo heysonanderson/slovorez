@@ -37,31 +37,38 @@ else:
     print("file not found")
     exit(1) # Handle more appropriately
 
+sentencer.set_batch_size(262144) # if not explicitly set, batch size = 1024
+
+text = ""
+
+text_chunks = []
+
 rutokens = []
+batch_count = 0
 while(True):
     batch = sentencer.get_batch()
     if not batch:
         break
 
-    for token in batch:
-        if token.type == slovorezCXX.TokenType.RUWORD:
-            rutokens.append(token)
+    batch_count = batch_count + 1
 
-text = ""
-for rutoken in rutokens:
-    text = text + rutoken.get_str() + " "
+    batch_str = " ".join(token.str for token in batch if token.type == slovorezCXX.TokenType.RUWORD)
+    text_chunks.append(batch_str)
 
-    # token.size for the length (how many utf8 characters)
-    # token.data to access individual UTF8Char in token
+    ## Token Struct
+    # token.data - List of UTF8Char
+    # token.size - Number of UTF8Chars
+    # token.type - defined in slovorezCXX enum TokenType. Represents token type
+    # token.str - Encoded string of token
+    #
+    ## UTF8Char Struct
+    # utf8c.data - Char raw bytes
+    # utf8c.size - Number of bytes in the char
+    # utf8c.char - Encoded char
 
-    for utf8c in rutoken.data:
-        # utf8c.data for raw bytes
-        # utf8c.char for utf8 char
-        # utf8c.size for how much bytes UTF8 character takes
-        print(utf8c.char, end='')
+    print(batch_count)
 
-    print()
-
+text = " ".join(text_chunks)
 
 #######################
 

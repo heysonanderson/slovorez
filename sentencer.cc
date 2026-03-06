@@ -5,46 +5,55 @@
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <pybind11/stl_bind.h>
 
 #include "text_lexer.h"
 
-constexpr size_t MAX_WORDS_SIZE = 65536;
-
 namespace py = pybind11;
+
+constexpr size_t DEFAULT_BATCH_SIZE = 1024;
 
 class FromTextSentencer {
 private:
+    LexerContext lctx;
+    char* raw_text = nullptr;
+    std::vector<Token> tokens_batch;
     size_t len = 0;
     size_t pos = 0;
-    std::vector<Token> tokens_batch;
-    char* raw_text = nullptr;
+    size_t batch_size;
 
 public:
     FromTextSentencer(const char* str, size_t str_len) : len(str_len), pos(0)
     {
         raw_text = (char*)malloc(str_len);
+        batch_size = DEFAULT_BATCH_SIZE;
         if (!raw_text)
         {
             throw std::bad_alloc();
         }
         memcpy(raw_text, str, len);
-        tokens_batch.reserve(MAX_WORDS_SIZE);
+        tokens_batch.reserve(batch_size);
+        slovorez_lexer_init(&lctx);
+    }
+
+    void set_batch_size(size_t new_size)
+    {
+        batch_size = new_size;
+        tokens_batch.reserve(batch_size);
     }
 
     std::vector<Token> get_batch()
     {
         tokens_batch.clear();
 
-        LexerContext lctx;
-        slovorez_lexer_init(&lctx);
-        while (pos <= len && tokens_batch.size() != MAX_WORDS_SIZE)
+        while (pos <= len && tokens_batch.size() != batch_size)
         {
             if (slovorez_lexer_token_get(&lctx, (unsigned char)raw_text[pos++]))
             {
-                tokens_batch.push_back(lctx.tokens.back());
+                tokens_batch.push_back(std::move(lctx.rtoken));
             }
         }
-        return tokens_batch;
+        return std::move(tokens_batch);
     }
 
     ~FromTextSentencer()
@@ -59,13 +68,25 @@ public:
 
 class FromFileSentencer {
 private:
+    LexerContext lctx;
     FILE* f = nullptr;
     std::vector<Token> tokens_batch;
+    size_t tbatch_pos;
+    size_t batch_size;
 
 public:
     FromFileSentencer(const std::string& fpath)
     {
         f = fopen(fpath.c_str(), "r");
+        batch_size = DEFAULT_BATCH_SIZE;
+        tokens_batch.reserve(batch_size);
+        slovorez_lexer_init(&lctx);
+    }
+
+    void set_batch_size(size_t new_size)
+    {
+        batch_size = new_size;
+        tokens_batch.reserve(batch_size);
     }
 
     bool is_fopen()
@@ -81,17 +102,15 @@ public:
         }
         tokens_batch.clear();
 
-        LexerContext lctx;
-        slovorez_lexer_init(&lctx);
         int c;
-        while ((c = fgetc(f)) != EOF && tokens_batch.size() != MAX_WORDS_SIZE)
+        while ((c = fgetc(f)) != EOF && tokens_batch.size() != batch_size)
         {
             if (slovorez_lexer_token_get(&lctx, (unsigned char)c))
             {
-                tokens_batch.push_back(lctx.tokens.back());
+                tokens_batch.push_back(std::move(lctx.rtoken));
             }
         }
-        return tokens_batch;
+        return std::move(tokens_batch);
     }
 
     ~FromFileSentencer()
@@ -102,6 +121,8 @@ public:
         }
     }
 };
+
+PYBIND11_MAKE_OPAQUE(std::vector<Token>);
 
 PYBIND11_MODULE(slovorezCXX, m)
 {
@@ -146,7 +167,7 @@ PYBIND11_MODULE(slovorezCXX, m)
                 return list;
             }
         )
-        .def("get_str", [](const Token &self)
+        .def_property_readonly("str", [](const Token &self)
             {
                 std::string str;
                 str.reserve(self.size * 4);
@@ -159,6 +180,8 @@ PYBIND11_MODULE(slovorezCXX, m)
         )
         ;
 
+    py::bind_vector<std::vector<Token>>(m, "TokenVector");
+
     py::class_<FromTextSentencer>(m, "FTSentencer")
         .def(py::init([](const std::string& s)
                 {
@@ -167,12 +190,14 @@ PYBIND11_MODULE(slovorezCXX, m)
             ),
             py::arg("text")
         )
-        .def("get_batch", &FromTextSentencer::get_batch)
+        .def("get_batch", &FromTextSentencer::get_batch, py::return_value_policy::move)
+        .def("set_batch_size", &FromTextSentencer::set_batch_size)
         ;
 
     py::class_<FromFileSentencer>(m, "FFSentencer")
         .def(py::init<const std::string&>(), py::arg("fpath"))
         .def("is_fopen", &FromFileSentencer::is_fopen)
-        .def("get_batch", &FromFileSentencer::get_batch)
+        .def("get_batch", &FromFileSentencer::get_batch, py::return_value_policy::move)
+        .def("set_batch_size", &FromFileSentencer::set_batch_size)
         ;
 }

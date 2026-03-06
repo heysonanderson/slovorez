@@ -1,6 +1,5 @@
 #include <cstdio>
 #include <cstring>
-#include <clocale>
 #include <string>
 #include <vector>
 
@@ -13,17 +12,17 @@ constexpr size_t MAX_WORDS_SIZE = 65536;
 
 namespace py = pybind11;
 
-class Sentencer {
+class FromTextSentencer {
 private:
-    char* raw_text = nullptr;
-    std::vector<Token> tokens_batch;
     size_t len = 0;
     size_t pos = 0;
+    std::vector<Token> tokens_batch;
+    char* raw_text = nullptr;
 
 public:
-    Sentencer(const char* str, size_t str_len) : len(str_len), pos(0)
+    FromTextSentencer(const char* str, size_t str_len) : len(str_len), pos(0)
     {
-        raw_text = (char*)malloc(str_len + 1);
+        raw_text = (char*)malloc(str_len);
         if (!raw_text)
         {
             throw std::bad_alloc();
@@ -35,10 +34,10 @@ public:
     std::vector<Token> get_batch()
     {
         tokens_batch.clear();
+
         LexerContext lctx;
         slovorez_lexer_init(&lctx);
-
-        while (pos != len && tokens_batch.size() != MAX_WORDS_SIZE)
+        while (pos <= len && tokens_batch.size() != MAX_WORDS_SIZE)
         {
             if (slovorez_lexer_token_get(&lctx, (unsigned char)raw_text[pos++]))
             {
@@ -48,12 +47,58 @@ public:
         return tokens_batch;
     }
 
-    ~Sentencer()
+    ~FromTextSentencer()
     {
         if (raw_text)
         {
             free(raw_text);
             raw_text = nullptr;
+        }
+    }
+};
+
+class FromFileSentencer {
+private:
+    FILE* f = nullptr;
+    std::vector<Token> tokens_batch;
+
+public:
+    FromFileSentencer(const std::string& fpath)
+    {
+        f = fopen(fpath.c_str(), "r");
+    }
+
+    bool is_fopen()
+    {
+        return f != nullptr;
+    }
+
+    std::vector<Token> get_batch()
+    {
+        if (f == nullptr)
+        {
+            return {};
+        }
+        tokens_batch.clear();
+
+        LexerContext lctx;
+        slovorez_lexer_init(&lctx);
+        int c;
+        while ((c = fgetc(f)) != EOF && tokens_batch.size() != MAX_WORDS_SIZE)
+        {
+            if (slovorez_lexer_token_get(&lctx, (unsigned char)c))
+            {
+                tokens_batch.push_back(lctx.tokens.back());
+            }
+        }
+        return tokens_batch;
+    }
+
+    ~FromFileSentencer()
+    {
+        if (f != nullptr)
+        {
+            fclose(f);
         }
     }
 };
@@ -114,12 +159,20 @@ PYBIND11_MODULE(slovorezCXX, m)
         )
         ;
 
-    py::class_<Sentencer>(m, "Sentencer")
+    py::class_<FromTextSentencer>(m, "FTSentencer")
         .def(py::init([](const std::string& s)
-            {
-                return new Sentencer(s.data(), s.size());
-            }
-        ), py::arg("text"))
-        .def("get_batch", &Sentencer::get_batch)
+                {
+                    return new FromTextSentencer(s.data(), s.size());
+                }
+            ),
+            py::arg("text")
+        )
+        .def("get_batch", &FromTextSentencer::get_batch)
+        ;
+
+    py::class_<FromFileSentencer>(m, "FFSentencer")
+        .def(py::init<const std::string&>(), py::arg("fpath"))
+        .def("is_fopen", &FromFileSentencer::is_fopen)
+        .def("get_batch", &FromFileSentencer::get_batch)
         ;
 }

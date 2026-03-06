@@ -13,6 +13,7 @@ def get_project_path(relative_path):
 
 tikhonov_path = get_project_path("data/dictionaries/tikhonov-morphemes.json")
 model_path = get_project_path("data/ml/models/resnet-deep-4b-ef-2048-80-0.4-tikh-synth.keras")
+text_path = get_project_path("text.txt")
 
 os.makedirs(tikhonov_path.parent, exist_ok=True)
 os.makedirs(model_path.parent, exist_ok=True)
@@ -20,14 +21,22 @@ os.makedirs(model_path.parent, exist_ok=True)
 
 import slovorezCXX
 
-# removed implementation
-#
-#lex = wrapper.Lexer()
-#rutokens = wrapper.Lexer.run(txt)
-
 txt = "HELLO ПРИВЕТ Welcome КАК and such and ДЕЛА so on. Я сижу в своей комнате, в обиталище шума всей квартиры. Слышу, как хлопают все двери, из-за их шума я избавлен только от шагов тех, кто в них проходит, даже когда в кухне захлопывается печная заслонка, я это слышу."
 
-sentencer = slovorezCXX.Sentencer(txt)
+# 1.From Text (FT). Expects the string.
+#
+#sentencer = slovorezCXX.FTSentencer(txt)
+
+
+# 2. From File (FF). Expects string with absolute path to the file containing text.
+#
+sentencer = slovorezCXX.FFSentencer(str(text_path))
+if sentencer.is_fopen(): # is_fopen is a method of FFSentencer only
+    print("file found")
+else:
+    print("file not found")
+    exit(1) # Handle more appropriately
+
 rutokens = []
 while(True):
     batch = sentencer.get_batch()
@@ -42,8 +51,13 @@ text = ""
 for rutoken in rutokens:
     text = text + rutoken.get_str() + " "
 
+    # token.size for the length (how many utf8 characters)
+    # token.data to access individual UTF8Char in token
+
     for utf8c in rutoken.data:
         # utf8c.data for raw bytes
+        # utf8c.char for utf8 char
+        # utf8c.size for how much bytes UTF8 character takes
         print(utf8c.char, end='')
 
     print()

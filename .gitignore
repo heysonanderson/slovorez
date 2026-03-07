@@ -1,4 +1,11 @@
 build/
+*.so
+*.dylib
+*.pyd
+*.dll
+*.exp
+*.lib
+
 *.egg-info
 *.pycache
 *__pycache__

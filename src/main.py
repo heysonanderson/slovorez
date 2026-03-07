@@ -6,7 +6,6 @@ from slovorez.analytics.morphemes import parse_tikhonov_txt
 import os
 from pathlib import Path
 
-
 def get_project_path(relative_path):
     script_dir = Path(__file__).parent.absolute()
     project_root = script_dir.parent
@@ -15,14 +14,62 @@ def get_project_path(relative_path):
 
 tikhonov_path = get_project_path("data/dictionaries/tikhonov-morphemes.json")
 model_path = get_project_path("data/ml/models/resnet-deep-4b-ef-2048-80-0.4-tikh-synth.keras")
+text_path = get_project_path("text.txt")
 
 os.makedirs(tikhonov_path.parent, exist_ok=True)
 os.makedirs(model_path.parent, exist_ok=True)
 
 
-lex = wrapper.Lexer()
-text = lex.run()
+import slovorezCXX
 
+txt = "HELLO ПРИВЕТ Welcome КАК and such and ДЕЛА so on. Я сижу в своей комнате, в обиталище шума всей квартиры. Слышу, как хлопают все двери, из-за их шума я избавлен только от шагов тех, кто в них проходит, даже когда в кухне захлопывается печная заслонка, я это слышу."
+
+# 1.From Text (FT). Expects the string.
+#
+#sentencer = slovorezCXX.FTSentencer(txt)
+
+
+# 2. From File (FF). Expects string with absolute path to the file containing text.
+#
+sentencer = slovorezCXX.FFSentencer(str(text_path))
+if sentencer.is_fopen(): # is_fopen is a method of FFSentencer only
+    print("file found")
+else:
+    print("file not found")
+    exit(1) # Handle more appropriately
+
+sentencer.set_batch_size(262144) # if not explicitly set, batch size = 1024
+
+text = ""
+
+text_chunks = []
+
+rutokens = []
+batch_count = 0
+while(True):
+    batch = sentencer.get_batch()
+    if not batch:
+        break
+
+    batch_count = batch_count + 1
+
+    batch_str = " ".join(token.str for token in batch if token.type == slovorezCXX.TokenType.RUWORD)
+    text_chunks.append(batch_str)
+
+    ## Token Struct
+    # token.data - List of UTF8Char
+    # token.size - Number of UTF8Chars
+    # token.type - defined in slovorezCXX enum TokenType. Represents token type
+    # token.str - Encoded string of token
+    #
+    ## UTF8Char Struct
+    # utf8c.data - Char raw bytes
+    # utf8c.size - Number of bytes in the char
+    # utf8c.char - Encoded char
+
+    print(batch_count)
+
+text = " ".join(text_chunks)
 
 #######################
 

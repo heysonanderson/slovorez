@@ -2,13 +2,46 @@ from slovorez.io.loaders import *
 from slovorez.core.models import morphemes_vocab, OPENCORPORA_TO_UPOS, UPOS, UNK_ID
 
 
+def create_root_variants(morpheme, morphemes_list, word):
+    morph_type = "ROOT"
+    root_variants = {}
+    if "words" not in morphemes_list[morph_type][morpheme]:
+        morphemes_list[morph_type][morpheme]["words"] = []
+    morphemes_list[morph_type][morpheme]["words"].append(word)
+    
+    for i in range(1, len(morpheme)):
+        first_part = morpheme[:i]
+        sec_part = morpheme[i:]
+        if (is_morpheme_type(first_part, "ROOT", morphemes_list) and 
+            is_morpheme_type(sec_part, "SUFF", morphemes_list) and 
+            len(first_part) > 1):
+            if morpheme not in root_variants:
+                root_variants[morpheme] = []
+            root_variants[morpheme].append([(first_part, "ROOT"), (sec_part, "SUFF")])
+        
+        if (is_morpheme_type(first_part, "PREF", morphemes_list) and 
+            is_morpheme_type(sec_part, "ROOT", morphemes_list) and 
+            len(sec_part) > 1):
+            if morpheme not in root_variants:
+                root_variants[morpheme] = []
+            root_variants[morpheme].append([(first_part, "PREF"), (sec_part, "ROOT")])
+        
+        if (is_morpheme_type(first_part, "ROOT", morphemes_list) and 
+            is_morpheme_type(sec_part, "ROOT", morphemes_list) and 
+            len(sec_part) > 2 and len(first_part) > 2):
+            if morpheme not in root_variants:
+                root_variants[morpheme] = []
+            root_variants[morpheme].append([(first_part, "ROOT"), (sec_part, "ROOT")])
+    
+    return root_variants
+
 def create_morphemes_list(path="./data/dictionaries/ml"):
     morphemes = load_json(f"{path}-morphemes.json")
     morphemes_list = {}
     morphemes_list = {k: {} for k in morphemes_vocab.keys()}
 
     reverse_morphemes_vocab = {v: k for k, v in morphemes_vocab.items()}
-    
+
     for word, word_data in morphemes.items():
         pairs = word_data["morphemes"]
         for morpheme, morph_type in pairs:
@@ -20,44 +53,18 @@ def create_morphemes_list(path="./data/dictionaries/ml"):
                 }
 
             morphemes_list[morph_type][morpheme]["count"] += 1
-            root_variants = {}
-
-            if morph_type == "ROOT":
-                if "words" not in morphemes_list[morph_type][morpheme]:
-                    morphemes_list[morph_type][morpheme]["words"] = []
-                morphemes_list[morph_type][morpheme]["words"].append(word)
-                
-                for i in range(2, len(morpheme)):
-                    first_part = morpheme[:i]
-                    sec_part = morpheme[i:]
-                    if (is_morpheme_type(first_part, "ROOT", morphemes_list) and 
-                        is_morpheme_type(sec_part, "SUFF", morphemes_list) and 
-                        len(first_part) > 1):
-                        if morpheme not in root_variants:
-                            root_variants[morpheme] = []
-                        root_variants[morpheme].append([(first_part, "ROOT"), (sec_part, "SUFF")])
-                    
-                    if (is_morpheme_type(first_part, "PREF", morphemes_list) and 
-                        is_morpheme_type(sec_part, "ROOT", morphemes_list) and 
-                        len(sec_part) > 1):
-                        if morpheme not in root_variants:
-                            root_variants[morpheme] = []
-                        root_variants[morpheme].append([(first_part, "PREF"), (sec_part, "ROOT")])
-                    
-                    if (is_morpheme_type(first_part, "ROOT", morphemes_list) and 
-                        is_morpheme_type(sec_part, "ROOT", morphemes_list) and 
-                        len(sec_part) > 2 and len(first_part) > 2):
-                        if morpheme not in root_variants:
-                            root_variants[morpheme] = []
-                        root_variants[morpheme].append([(first_part, "ROOT"), (sec_part, "ROOT")])
-        
+            
+               
+    for word, word_data in morphemes.items():
+        pairs = word_data["morphemes"]
+        root_variants = {}
+        for morpheme, morph_type in pairs:
+            morph_type = reverse_morphemes_vocab[morph_type]
+            if morph_type == "ROOT" and not morphemes_list["ROOT"][morpheme].get("variants"):
+                root_variants = create_root_variants(morpheme=morpheme, morphemes_list=morphemes_list, word=word)       
         if root_variants:
             for root in root_variants.keys():
                 morphemes_list["ROOT"][root]["variants"] = root_variants[root]
-
-    counts = []
-    for n in morphemes_list.keys():
-        counts.append(f"{n}: {len(morphemes_list[n])}")
 
     counts = []
     for n in morphemes_list.keys():
@@ -70,10 +77,6 @@ def create_morphemes_list(path="./data/dictionaries/ml"):
 
 def is_morpheme_type(morpheme, type, morphemes_list):
     return morpheme in morphemes_list[type].keys()
-
-
-create_morphemes_list()
-
 
 def parse_tikhonov_txt(path="./data/dictionaries/tikhonov",tags=False):
     if tags:

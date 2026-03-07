@@ -1,6 +1,7 @@
 from slovorez.core import cache_utils, wrapper
 from slovorez.core.models import CHAR_VOCAB, UPOS, UNK_ID, morphemes_bies, morphemes_vocab
 from slovorez.io import loaders
+from slovorez.analytics.morphemes import parse_tikhonov_txt
 
 import os
 from pathlib import Path
@@ -32,7 +33,7 @@ stream = cache_utils.to_token_stream(text)
 
 # CREATING INITIAL DICT
 if not os.path.exists(tikhonov_path):
-    loaders.parse_tikhonov_txt()
+    parse_tikhonov_txt()
 
 cache = loaders.load_json(tikhonov_path)
 not_in_cache, missing_count = cache_utils.find_uncached(stream, cache)

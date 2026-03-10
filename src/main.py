@@ -1,90 +1,56 @@
-from slovorez.core import cache_utils, wrapper
+from slovorez.core import cache_utils
 from slovorez.core.models import CHAR_VOCAB, UPOS, UNK_ID, morphemes_bies, morphemes_vocab
-from slovorez.io import loaders
 from slovorez.analytics.morphemes import parse_tikhonov_txt
+from slovorez.utils import get_project_path, file_exists
 
+dictionary_path = get_project_path("data/dictionaries/ml-morphemes.json", create_dir=True)
+model_path = get_project_path("data/ml/models/resnet-deep-4b-ef-2048-80-0.4-tikh-synth.keras", create_dir=True)
+text_path = "large.txt"
+
+import gc
+import psutil
 import os
-from pathlib import Path
-
-def get_project_path(relative_path):
-    script_dir = Path(__file__).parent.absolute()
-    project_root = script_dir.parent
-    full_path = project_root / relative_path
-    return full_path
-
-tikhonov_path = get_project_path("data/dictionaries/tikhonov-morphemes.json")
-model_path = get_project_path("data/ml/models/resnet-deep-4b-ef-2048-80-0.4-tikh-synth.keras")
-text_path = get_project_path("text.txt")
-
-os.makedirs(tikhonov_path.parent, exist_ok=True)
-os.makedirs(model_path.parent, exist_ok=True)
+from slovorez.core.wrapper import Sentencer
 
 
-import slovorezCXX
+sentencer = Sentencer(text_path)
+sentencer.set_batch_size(65536)
 
-txt = "HELLO ПРИВЕТ Welcome КАК and such and ДЕЛА so on. Я сижу в своей комнате, в обиталище шума всей квартиры. Слышу, как хлопают все двери, из-за их шума я избавлен только от шагов тех, кто в них проходит, даже когда в кухне захлопывается печная заслонка, я это слышу."
-
-# 1.From Text (FT). Expects the string.
-#
-#sentencer = slovorezCXX.FTSentencer(txt)
-
-
-# 2. From File (FF). Expects string with absolute path to the file containing text.
-#
-sentencer = slovorezCXX.FFSentencer(str(text_path))
-if sentencer.is_fopen(): # is_fopen is a method of FFSentencer only
-    print("file found")
-else:
-    print("file not found")
-    exit(1) # Handle more appropriately
-
-sentencer.set_batch_size(262144) # if not explicitly set, batch size = 1024
-
-text = ""
-
-text_chunks = []
-
-rutokens = []
-batch_count = 0
-while(True):
-    batch = sentencer.get_batch()
-    if not batch:
-        break
-
-    batch_count = batch_count + 1
-
-    batch_str = " ".join(token.str for token in batch if token.type == slovorezCXX.TokenType.RUWORD)
-    text_chunks.append(batch_str)
-
-    ## Token Struct
-    # token.data - List of UTF8Char
-    # token.size - Number of UTF8Chars
-    # token.type - defined in slovorezCXX enum TokenType. Represents token type
-    # token.str - Encoded string of token
-    #
-    ## UTF8Char Struct
-    # utf8c.data - Char raw bytes
-    # utf8c.size - Number of bytes in the char
-    # utf8c.char - Encoded char
-
-    print(batch_count)
-
-text = " ".join(text_chunks)
-
-#######################
-
-#######################
-
-
-stream = cache_utils.to_token_stream(text)
 
 # CREATING INITIAL DICT
-if not os.path.exists(tikhonov_path):
+if not file_exists(dictionary_path):
     parse_tikhonov_txt()
+cache = {} # loaders.load_json(dictionary_path)
+cache_manager = set(cache.keys())
+uncached = set()
+current_uncached = set()
 
-cache = loaders.load_json(tikhonov_path)
-not_in_cache, missing_count = cache_utils.find_uncached(stream, cache)
+full_text_len = 0
+batch_count = 0
+missing_count = 0
 
+
+proc = psutil.Process(os.getpid())
+
+
+def iterate_batches(sentencer):
+    while(True):
+        batch = sentencer.get_batch()
+        if not batch:
+            break
+        
+        batch_count = batch_count + 1
+        full_text_len+=len(batch)
+    
+def check_uncached(current_batch):
+    return cache_utils.find_uncached(stream=current_batch, cache_set=cache_manager, uncached=uncached)
+
+
+uncached = list(uncached)
+print(uncached)
+#######################
+
+#######################
 
 #######################
 
@@ -100,12 +66,9 @@ from slovorez.ml.layers import *
 # LOADING MORPHEME-SEGMENTATION MODEL
 model: keras.Model = keras.models.load_model(model_path, compile=False)
 
-# PROCESSING CHAR TOKENS
-char_tokenized = [[CHAR_VOCAB.get(c, UNK_ID) for c in token] for token in not_in_cache]
-
 # CREATING PADDED SEQUENCES
 X_input = pad_sequences(char_tokenized, maxlen=64, padding='post', value=0)
-predictions = model.predict(X_input, batch_size=256, verbose=1)
+predictions = model.predict(X_input, batch_size=1024, verbose=1)
 all_predictions = np.argmax(predictions, axis=-1)
 
 
@@ -174,7 +137,7 @@ def prediction_to_string(word, word_predictions, reverse_morphemes_bies):
 reverse_morphemes_bies = { v: k for k, v in morphemes_bies.items() }
 reverse_morphemes_vocab = { v: k for k, v in morphemes_vocab.items() }
 
-for word_predictions, word in zip(all_predictions[:100], not_in_cache[:100]):
+for word_predictions, word in zip(all_predictions[:100], uncached[:100]):
     segmented_word = prediction_to_string(word, word_predictions, reverse_morphemes_bies)
     strings = [f"{seg}|({reverse_morphemes_vocab[seg_type]})" for seg, seg_type in segmented_word]
     f = "|".join(strings)
@@ -183,7 +146,7 @@ for word_predictions, word in zip(all_predictions[:100], not_in_cache[:100]):
 
 # PRINT SOME STATS
 print(f"\n\n" + "-"*50 + "\n")
-print(f"Full text length: {len(stream.tokens)}")
+print(f"Full text length: {full_text_len}")
 print(f"None cached words count: {missing_count}")
-print(f"Uncached ratio: {missing_count / len(stream.tokens)}")
-print(f"Number of new cached keys: {len(not_in_cache)}")
+print(f"Uncached ratio: {missing_count / full_text_len}")
+print(f"Number of new cached keys: {len(uncached)}")

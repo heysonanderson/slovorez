@@ -18,3 +18,4 @@ venv/
 env/
 *.pstat
 large.txt
+.vscode

@@ -55,27 +55,6 @@ class PosVocab(IntEnum):
     VERB = 17
     X = 18
 
-@dataclass
-class WordAnalysis:
-    pos: int
-    gender: int
-    number: int
-    case: int
-    morphemes: List[tuple[str, int]]
-
-@dataclass
-class Token:
-    text: str
-    lookup_key: str
-
-@dataclass
-class TokenStream:
-    name: str
-    tokens: List[Token] = field(default_factory=list)
-
-
-
-
 PAD_TOKEN = "<PAD>"
 UNK_TOKEN = "<UNK>"
 PAD_ID = 0
@@ -221,10 +200,4 @@ CHAR_VOCAB = {
     " ": 47,   # пробел
     "-": 48,   # дефис
     ".": 49,   # точка
-    ",": 50,   # запятая
-    "!": 51,   # восклицательный знак
-    "?": 52,   # вопросительный знак
-    ":": 53,   # двоеточие
-    ";": 54,   # точка с запятой
-    "'": 55,   # апостроф
 }

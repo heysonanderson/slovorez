@@ -14,4 +14,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(pybind11)
 
 pybind11_add_module(slovorezCXX sentencer.cc text_lexer.cc utf8_decoder.h)
+if(MINGW)
+    target_link_options(slovorezCXX PRIVATE "-static-libgcc" "-static-libstdc++" "-static")
+endif()
 set_target_properties(slovorezCXX PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

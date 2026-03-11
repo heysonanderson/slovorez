@@ -1,7 +1,7 @@
-from slovorezCXX import TokenVector, TokenType
+from slovorezCXX import TokenType
+import numpy as np
 
-
-def find_uncached(stream: TokenVector, cache_set: set, uncached: set = None, needed_toktype: TokenType = None, min_toklen: int = 1, max_toklen: int = 64) -> set[str]:
+def find_uncached(tokens: list[str], ltokens: list[str], types: np.ndarray, cache_set: set, uncached: set = None, needed_toktype: TokenType = None, min_toklen: int = 1, max_toklen: int = 64) -> set[str]:
     
     if not uncached:
         uncached = set()
@@ -15,13 +15,10 @@ def find_uncached(stream: TokenVector, cache_set: set, uncached: set = None, nee
     if not max_toklen:
         max_toklen = 64
         
-    ml = 0
-    for t in stream:
-        size = t.size
-        if t.type != needed_toktype or size > max_toklen or size < min_toklen:
-            continue
-        lookup_key = t.str.lower()
-        if lookup_key not in cache_set:
-            uncached.add(lookup_key)
-            ml+=1
-    return uncached, ml
+    mask = (types == needed_toktype.value)
+
+    matching_indices = np.where(mask)[0]
+    matching_tokens = [ltokens[i] for i in matching_indices]
+
+    valid_tokens = {t for t in matching_tokens if min_toklen <= len(t) <= max_toklen}
+    return valid_tokens - cache_set

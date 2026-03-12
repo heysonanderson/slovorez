@@ -1,5 +1,5 @@
 from slovorez.core import cache_utils
-from slovorez.core.models import CHAR_VOCAB, UPOS, UNK_ID, morphemes_bies, morphemes_vocab
+from slovorez.core.models import CHAR_VOCAB, UNK_ID, morphemes_bies, morphemes_vocab
 from slovorez.analytics.morphemes import parse_tikhonov_txt
 from slovorez.utils import get_project_path, file_exists
 

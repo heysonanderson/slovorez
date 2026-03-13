@@ -179,6 +179,16 @@ public:
     }
 };
 
+typedef struct FromTextStream {
+    FromTextSentencer &sentencer;
+    FromTextStream(FromTextSentencer& s) : sentencer(s) {}
+} FromTextStream;
+
+typedef struct FromFileStream {
+    FromFileSentencer &sentencer;
+    FromFileStream(FromFileSentencer& s) : sentencer(s) {}
+} FromFileStream;
+
 PYBIND11_MODULE(slovorezCXX, m)
 {
     py::enum_<TokenType>(m, "TokenType")
@@ -191,7 +201,21 @@ PYBIND11_MODULE(slovorezCXX, m)
         .value("PNCTTN", TokenType::PNCTTN)
         .value("UNKNWN", TokenType::UNKNWN)
         .export_values()
-        ;
+    ;
+
+    py::class_<FromTextStream>(m, "fts_stream")
+        .def("__iter__", [](FromTextStream &self) { return self; })
+        .def("__next__", [](FromTextStream &self)
+            {
+                py::dict batch = self.sentencer.get_batch();
+                if (batch.empty())
+                {
+                    throw py::stop_iteration();
+                }
+                return batch;
+            }
+        )
+    ;
 
     py::class_<FromTextSentencer>(m, "FTSentencer")
         .def(py::init([](const std::string& s)
@@ -201,14 +225,38 @@ PYBIND11_MODULE(slovorezCXX, m)
             ),
             py::arg("text")
         )
-        .def("get_batch", &FromTextSentencer::get_batch)
         .def("set_batch_size", &FromTextSentencer::set_batch_size)
-        ;
+        .def("get_batch", &FromTextSentencer::get_batch)
+        .def_property_readonly("stream", [](FromTextSentencer& self)
+            {
+                return FromTextStream(self);
+            }
+        )
+    ;
+
+    py::class_<FromFileStream>(m, "ffs_stream")
+        .def("__iter__", [](FromFileStream &self) { return self; })
+        .def("__next__", [](FromFileStream &self)
+            {
+                py::dict batch = self.sentencer.get_batch();
+                if (batch.empty())
+                {
+                    throw py::stop_iteration();
+                }
+                return batch;
+            }
+        )
+    ;
 
     py::class_<FromFileSentencer>(m, "FFSentencer")
         .def(py::init<const std::string&>(), py::arg("fpath"))
         .def("is_fopen", &FromFileSentencer::is_fopen)
-        .def("get_batch", &FromFileSentencer::get_batch)
         .def("set_batch_size", &FromFileSentencer::set_batch_size)
-        ;
+        .def("get_batch", &FromFileSentencer::get_batch)
+        .def_property_readonly("stream", [](FromFileSentencer& self)
+            {
+                return FromFileStream(self);
+            }
+        )
+    ;
 }

@@ -5,12 +5,7 @@ TEXT_FILE = "text.txt"
 sentencer = slovorezCXX.FFSentencer(TEXT_FILE)
 
 bcount = 1
-while True:
-    batch = sentencer.get_batch()
-    if not batch:
-        break
-    
-    print(bcount)
+for batch in sentencer.stream:
     types = batch["types"]
     tokens = batch["text"].split('\0')[:-1]
     ltext = batch["text"].lower()
@@ -19,4 +14,5 @@ while True:
     for i in range(len(tokens)):
         print(f"{slovorezCXX.TokenType(types[i])} - {tokens[i]} ({ltokens[i]})")
     
+    print(bcount)
     bcount = bcount + 1

@@ -136,11 +136,7 @@ def run_sentencer_profiler(lp, sentencer):
 
 def iterate_sentencer(sentencer):
     global full_text_len
-    while(True):
-        batch = sentencer.get_batch()
-        if not batch:
-            break
-
+    for batch in sentencer.stream:
         tokens = batch["text"].split('\0')[:-1]
         types = batch["types"]
         ltext = batch["text"].lower()

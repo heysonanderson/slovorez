@@ -8,6 +8,7 @@
 #include "text_lexer.h"
 
 namespace py = pybind11;
+using namespace py::literals;
 
 constexpr size_t DEFAULT_BATCH_SIZE = 1048576;
 
@@ -15,58 +16,66 @@ class FromTextSentencer {
 private:
     LexerContext lctx;
     char* raw_text = nullptr;
-    char* str_buf = nullptr;
-    TokenType* ttype_buf = nullptr;
-    size_t len = 0;
-    size_t pos = 0;
+    size_t text_len = 0;
+    size_t text_pos = 0;
+    char* batch_str_buf = nullptr;
+    TokenType* batch_types_buf = nullptr;
     size_t batch_size = DEFAULT_BATCH_SIZE;
+    uint64_t filter_mask = 0xFFFFFFFFFFFFFFFF;
 
 public:
-    FromTextSentencer(const char* str, size_t str_len) : len(str_len), pos(0)
+    FromTextSentencer(const char* str, size_t str_len) : text_len(str_len), text_pos(0)
     {
-        raw_text = (char*)malloc(str_len);
-        str_buf = (char*)malloc((512 * batch_size + batch_size) * sizeof(char));
-        ttype_buf = (TokenType*)malloc(batch_size * sizeof(TokenType));
-        memcpy(raw_text, str, len);
-        slovorez_lexer_init(&lctx);
+        this->raw_text = (char*)malloc(str_len);
+        this->batch_str_buf = (char*)malloc((512 * this->batch_size + this->batch_size) * sizeof(char));
+        this->batch_types_buf = (TokenType*)malloc(this->batch_size * sizeof(TokenType));
+        memcpy(this->raw_text, str, str_len);
+        slovorez_lexer_init(&this->lctx);
     }
 
-    void set_batch_size(size_t new_size)
+    void set_batch_size(size_t batch_size)
     {
-        batch_size = new_size;
-        str_buf = (char*)realloc(str_buf, (512 * batch_size + batch_size) * sizeof(char));
-        ttype_buf = (TokenType*)realloc(ttype_buf, batch_size * sizeof(TokenType));
+        this->batch_size = batch_size;
+        this->batch_str_buf = (char*)realloc(this->batch_str_buf, (512 * this->batch_size + this->batch_size) * sizeof(char));
+        this->batch_types_buf = (TokenType*)realloc(this->batch_types_buf, this->batch_size * sizeof(TokenType));
+    }
+
+    void set_filter(uint64_t filter_mask)
+    {
+        this->filter_mask = filter_mask;
     }
 
     py::dict get_batch()
     {
-        size_t str_size = 0;
-        size_t token_idx = 0;
-        while (pos <= len && token_idx <= batch_size)
+        size_t batch_str_size = 0;
+        size_t batch_token_idx = 0;
+        while (this->text_pos <= this->text_len && batch_token_idx <= this->batch_size)
         {
-            if (slovorez_lexer_token_get(&lctx, (unsigned char)raw_text[pos++]))
+            if (slovorez_lexer_token_get(&this->lctx, (unsigned char)this->raw_text[this->text_pos++]))
             {
-                const Token& token = lctx.rtoken;
-                for (int i = 0; i < token.size; ++i)
+                const Token& token = this->lctx.rtoken;
+                if (static_cast<uint64_t>(token.type) & this->filter_mask)
                 {
-                    memcpy(str_buf + str_size, token.data[i].data, token.data[i].size);
-                    str_size += token.data[i].size;
+                    for (int i = 0; i < token.size; ++i)
+                    {
+                        memcpy(this->batch_str_buf + batch_str_size, token.data[i].data, token.data[i].size);
+                        batch_str_size += token.data[i].size;
+                    }
+                    this->batch_str_buf[batch_str_size++] = '\0';
+                    this->batch_types_buf[batch_token_idx++] = token.type;
                 }
-                str_buf[str_size++] = '\0';
-                ttype_buf[token_idx] = token.type;
-                token_idx += 1;
             }
         }
-        if (token_idx == 0)
+        if (batch_token_idx == 0)
         {
             return py::dict();
         }
         py::dict outbuf;
-        outbuf["text"] = py::str(str_buf, str_size);
-        outbuf["types"] = py::array_t<int>(
-            { (size_t)token_idx },
-            { sizeof(int) },
-            reinterpret_cast<int*>(ttype_buf),
+        outbuf["text"_s] = py::str(this->batch_str_buf, batch_str_size);
+        outbuf["types"_s] = py::array_t<uint64_t>(
+            { (size_t)batch_token_idx },
+            { sizeof(uint64_t) },
+            reinterpret_cast<uint64_t*>(this->batch_types_buf),
             py::cast(this)
         );
         return outbuf;
@@ -74,20 +83,20 @@ public:
 
     ~FromTextSentencer()
     {
-        if (raw_text != nullptr)
+        if (this->raw_text != nullptr)
         {
-            free(raw_text);
-            raw_text = nullptr;
+            free(this->raw_text);
+            this->raw_text = nullptr;
         }
-        if (str_buf != nullptr)
+        if (this->batch_str_buf != nullptr)
         {
-            free(str_buf);
-            str_buf = nullptr;
+            free(this->batch_str_buf);
+            this->batch_str_buf = nullptr;
         }
-        if (ttype_buf != nullptr)
+        if (this->batch_types_buf != nullptr)
         {
-            free(ttype_buf);
-            ttype_buf = nullptr;
+            free(this->batch_types_buf);
+            this->batch_types_buf = nullptr;
         }
     }
 };
@@ -96,65 +105,73 @@ class FromFileSentencer {
 private:
     LexerContext lctx;
     FILE* f = nullptr;
-    char* str_buf = nullptr;
-    TokenType* ttype_buf = nullptr;
+    char* batch_str_buf = nullptr;
+    TokenType* batch_types_buf = nullptr;
     size_t batch_size = DEFAULT_BATCH_SIZE;
+    uint64_t filter_mask = 0xFFFFFFFFFFFFFFFF;
 
 public:
     FromFileSentencer(const std::string& fpath)
     {
-        f = fopen(fpath.c_str(), "r");
-        str_buf = (char*)malloc((512 * batch_size + batch_size) * sizeof(char));
-        ttype_buf = (TokenType*)malloc(batch_size * sizeof(TokenType));
-        slovorez_lexer_init(&lctx);
+        this->f = fopen(fpath.c_str(), "r");
+        this->batch_str_buf = (char*)malloc((512 * this->batch_size + this->batch_size) * sizeof(char));
+        this->batch_types_buf = (TokenType*)malloc(this->batch_size * sizeof(TokenType));
+        slovorez_lexer_init(&this->lctx);
     }
 
-    void set_batch_size(size_t new_size)
+    void set_batch_size(size_t batch_size)
     {
-        batch_size = new_size;
-        str_buf = (char*)realloc(str_buf, (512 * batch_size + batch_size) * sizeof(char));
-        ttype_buf = (TokenType*)realloc(ttype_buf, batch_size * sizeof(TokenType));
+        this->batch_size = batch_size;
+        this->batch_str_buf = (char*)realloc(this->batch_str_buf, (512 * this->batch_size + this->batch_size) * sizeof(char));
+        this->batch_types_buf = (TokenType*)realloc(this->batch_types_buf, this->batch_size * sizeof(TokenType));
+    }
+
+    void set_filter(uint64_t filter_mask)
+    {
+        this->filter_mask = filter_mask;
     }
 
     bool is_fopen()
     {
-        return f != nullptr;
+        return this->f != nullptr;
     }
 
     py::dict get_batch()
     {
-        if (f == nullptr)
+        if (this->f == nullptr)
         {
             return py::dict();
         }
-        size_t str_size = 0;
-        size_t token_idx = 0;
+        size_t batch_str_size = 0;
+        size_t batch_token_idx = 0;
         int c;
-        while ((c = fgetc(f)) != EOF && token_idx <= batch_size)
+        while ((c = fgetc(this->f)) != EOF && batch_token_idx <= this->batch_size)
         {
-            if (slovorez_lexer_token_get(&lctx, (unsigned char)c))
+            if (slovorez_lexer_token_get(&this->lctx, (unsigned char)c))
             {
-                const Token& token = lctx.rtoken;
-                for (int i = 0; i < token.size; ++i)
+                const Token& token = this->lctx.rtoken;
+                if (static_cast<uint64_t>(token.type) & this->filter_mask)
                 {
-                    memcpy(str_buf + str_size, token.data[i].data, token.data[i].size);
-                    str_size += token.data[i].size;
+                    for (int i = 0; i < token.size; ++i)
+                    {
+                        memcpy(this->batch_str_buf + batch_str_size, token.data[i].data, token.data[i].size);
+                        batch_str_size += token.data[i].size;
+                    }
+                    this->batch_str_buf[batch_str_size++] = '\0';
+                    this->batch_types_buf[batch_token_idx++] = token.type;
                 }
-                str_buf[str_size++] = '\0';
-                ttype_buf[token_idx] = token.type;
-                token_idx += 1;
             }
         }
-        if (token_idx == 0)
+        if (batch_token_idx == 0)
         {
             return py::dict();
         }
         py::dict outbuf;
-        outbuf["text"] = py::str(str_buf, str_size);
-        outbuf["types"] = py::array_t<int>(
-            { (size_t)token_idx },
-            { sizeof(int) },
-            reinterpret_cast<int*>(ttype_buf),
+        outbuf["text"_s] = py::str(this->batch_str_buf, batch_str_size);
+        outbuf["types"_s] = py::array_t<uint64_t>(
+            { (size_t)batch_token_idx },
+            { sizeof(uint64_t) },
+            reinterpret_cast<uint64_t*>(this->batch_types_buf),
             py::cast(this)
         );
         return outbuf;
@@ -162,19 +179,19 @@ public:
 
     ~FromFileSentencer()
     {
-        if (f != nullptr)
+        if (this->f != nullptr)
         {
-            fclose(f);
+            fclose(this->f);
         }
-        if (str_buf != nullptr)
+        if (this->batch_str_buf != nullptr)
         {
-            free(str_buf);
-            str_buf = nullptr;
+            free(this->batch_str_buf);
+            this->batch_str_buf = nullptr;
         }
-        if (ttype_buf != nullptr)
+        if (this->batch_types_buf != nullptr)
         {
-            free(ttype_buf);
-            ttype_buf = nullptr;
+            free(this->batch_types_buf);
+            this->batch_types_buf = nullptr;
         }
     }
 };
@@ -191,7 +208,7 @@ typedef struct FromFileStream {
 
 PYBIND11_MODULE(slovorezCXX, m)
 {
-    py::enum_<TokenType>(m, "TokenType")
+    py::enum_<TokenType>(m, "TokenType", py::arithmetic())
         .value("NOTTKN", TokenType::NOTTKN)
         .value("WRDSPC", TokenType::WRDSPC)
         .value("NWLINE", TokenType::NWLINE)
@@ -201,6 +218,11 @@ PYBIND11_MODULE(slovorezCXX, m)
         .value("PNCTTN", TokenType::PNCTTN)
         .value("UNKNWN", TokenType::UNKNWN)
         .export_values()
+        .def("__or__", [](TokenType a, TokenType b)
+            {
+                return static_cast<uint64_t>(a) | static_cast<uint64_t>(b);
+            }
+        )
     ;
 
     py::class_<FromTextStream>(m, "fts_stream")
@@ -226,6 +248,7 @@ PYBIND11_MODULE(slovorezCXX, m)
             py::arg("text")
         )
         .def("set_batch_size", &FromTextSentencer::set_batch_size)
+        .def("set_filter", &FromTextSentencer::set_filter)
         .def("get_batch", &FromTextSentencer::get_batch)
         .def_property_readonly("stream", [](FromTextSentencer& self)
             {
@@ -252,6 +275,7 @@ PYBIND11_MODULE(slovorezCXX, m)
         .def(py::init<const std::string&>(), py::arg("fpath"))
         .def("is_fopen", &FromFileSentencer::is_fopen)
         .def("set_batch_size", &FromFileSentencer::set_batch_size)
+        .def("set_filter", &FromFileSentencer::set_filter)
         .def("get_batch", &FromFileSentencer::get_batch)
         .def_property_readonly("stream", [](FromFileSentencer& self)
             {

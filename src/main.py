@@ -144,16 +144,19 @@ def iterate_sentencer(sentencer):
 
         full_text_len += len(tokens)
 
-        unknown_ltokens = list(cache_utils.find_uncached(tokens, ltokens, types, cache_manager))
+        unknown_ltokens = list(cache_utils.find_uncached(ltokens, cache_manager))
         batch_queue.put(unknown_ltokens)
 
 # --------- MAIN DRIVER ---------
+
+from slovorezCXX import TokenType
 
 MODEL_THNUM = 4
 
 def main():
     sentencer = Sentencer(str(text_path))
-    sentencer.set_batch_size(16777216) # 8388608 # 4194304 # 2097152
+    sentencer.set_batch_size(8388608) # 16777216 # 8388608 # 4194304 # 2097152
+    sentencer.set_filter(TokenType.RUWORD)
 
     model_ths = []
     for _ in range(MODEL_THNUM):

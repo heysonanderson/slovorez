@@ -15,12 +15,16 @@ pos = {
     "PROPN": 13, "PUNCT": 14, "SCONJ": 15, "SYM": 16, "VERB": 17, "X": 18
 }
 
+rev_pos = { v: k for k, v in pos.items() }
+
 morphemes = {
     PAD_TOKEN: PAD_ID, UNK_TOKEN: UNK_ID,
     "PREF": 2, "ROOT": 3, "SUFF": 4, "END": 5, "POSTFIX": 6, "LINK": 7, "HYPH": 8
 }
 
 morphemes_vocab = morphemes
+
+rev_morphemes_vocab = { v: k for k, v in morphemes.items() }
 
 morphemes_bies= {
     PAD_TOKEN: PAD_ID,
@@ -161,11 +165,24 @@ RUCORPORA_TO_UPOS = {
 }
 
 OPENCORPORA_TO_UPOS = {
-    "POS": {
-        "NOUN": "NOUN", "ADJF": "ADJ", "ADJS": "ADJ", "COMP": "ADJ", "VERB": "VERB",
-        "INFN": "VERB", "PRTF": "VERB", "PRTS": "VERB", "GRND": "VERB", "NUMR": "NUM",
-        "ADVB": "ADV", "NPRO": "PRON", "PRED": "ADV", "PREP": "ADP", "CONJ": "CCONJ",
-        "PRCL": "PART", "INTJ": "INTJ"
+"POS": {
+        "NOUN": "NOUN",
+        "ADJF": "ADJ",
+        "ADJS": "ADJ",
+        "COMP": "ADJ",
+        "PRTF": "ADJ",
+        "PRTS": "ADJ",
+        "VERB": "VERB",
+        "INFN": "VERB",
+        "GRND": "VERB",
+        "NUMR": "NUM",
+        "ADVB": "ADV",
+        "NPRO": "PRON",
+        "PRED": "ADV",
+        "PREP": "ADP",
+        "CONJ": "CCONJ",
+        "PRCL": "PART",
+        "INTJ": "INTJ"
     },
     "GENDER": {"masc": "Gender=Masc", "femn": "Gender=Fem", "neut": "Gender=Neut", "ms-f": "Gender=Masc"},
     "NUMBER": {"sing": "Number=Sing", "plur": "Number=Plur"},
@@ -199,5 +216,4 @@ CHAR_VOCAB = {
     # Пунктуация и символы (47-55)
     " ": 47,   # пробел
     "-": 48,   # дефис
-    ".": 49,   # точка
 }

@@ -1,34 +1,35 @@
 from pathlib import Path
 from typing import Union
 
-def _get_project_root() -> Path:
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        if (parent / "src").is_dir():
-            return parent
-    return current.parent
+# Путь к самой папке slovorez внутри site-packages или src
+LIBRARY_ROOT = Path(__file__).resolve().parent.parent 
+# Если data лежит рядом с src, нам нужно подняться выше:
+PROJECT_ROOT = LIBRARY_ROOT.parent 
 
-PROJECT_ROOT = _get_project_root()
-
-def get_project_path(*path_parts: Union[str, Path], create_dir=False) -> Path:
-    full_path = PROJECT_ROOT.joinpath(*path_parts)
-    if create_dir:
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-    return full_path
-
-def _resolve_path(path: Union[str, Path, None], *path_parts: Union[str, Path]) -> Path:
-    if path is None:
-        return get_project_path(*path_parts)
+def resolve_path(path: Union[str, Path]) -> Path:
+    p = Path(path)
     
-    full_path = Path(path).joinpath(*path_parts)
+    # 1. Если путь абсолютный — не трогаем его
+    if p.is_absolute():
+        return p
     
-    if not full_path.is_absolute():
-        return get_project_path(full_path)
-        
-    return full_path
+    # 2. Проверяем, существует ли файл относительно текущей рабочей директории (CWD)
+    # Это то, что ожидает пользователь, передавая "my_data.txt"
+    cwd_path = p.resolve()
+    if cwd_path.exists():
+        return cwd_path
 
-def file_exists(path: Union[str, Path, None] = None, *path_parts: Union[str, Path]) -> bool:
-    return _resolve_path(path, *path_parts).is_file()
+    # 3. Если в CWD не нашли, проверяем внутри папок библиотеки (ваши словари)
+    # Ищем в корне проекта (где лежит папка data)
+    internal_path = (PROJECT_ROOT / p).resolve()
+    if internal_path.exists():
+        return internal_path
 
-def dir_exists(path: Union[str, Path, None] = None, *path_parts: Union[str, Path]) -> bool:
-    return _resolve_path(path, *path_parts).is_dir()
+    # 4. Если нигде не нашли, возвращаем путь относительно CWD для стандартной ошибки
+    return cwd_path
+
+def file_exists(path: Union[str, Path]) -> bool:
+    return resolve_path(path).is_file()
+
+def dir_exists(path: Union[str, Path]) -> bool:
+    return resolve_path(path).is_dir()

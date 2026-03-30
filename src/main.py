@@ -1,24 +1,26 @@
-from slovorez.core import cache_utils
 from slovorez.core.models import CHAR_VOCAB, UPOS, UNK_ID, PAD_ID, morphemes_bies, morphemes_vocab
-from slovorez.analytics.morphemes import parse_tikhonov_txt
-from slovorez.utils import get_project_path, file_exists
-from line_profiler import LineProfiler
+from slovorez.utils import resolve_path
 import queue
-import sys
-import os
 import numpy as np
-from slovorez.ml.layers import *
-from slovorez.core.wrapper import Sentencer
+from slovorez.core.sentencer import Sentencer
 from slovorezCXX import TokenType
 from slovorez.io import loaders
-from torch import multiprocessing
-
-dictionary_path = get_project_path("data/dictionaries/static_dictionary/tikhonov-morphemes-pos.json", create_dir=True)
-model_path = get_project_path("data/ml/models/resnet-deep-4b-ef-2048-80-0.4-tikh-synth.keras", create_dir=True)
-text_path = "large.txt"
+import multiprocessing
+from line_profiler import LineProfiler
 
 
-cache = loaders.load_json(dictionary_path)
+BASE_DICT_PATH = "data/dictionaries/static_dictionary/tikhonov-morphemes-pos.json"
+PENDING_CACHE_PATH = "data/dictionaries/model_outputs/predictions-raw.jsonl"
+VALIDATED_DICT_PATH = "data/dictionaries/model_outputs/validated-dictionary.json"
+
+base_dict_path = resolve_path(BASE_DICT_PATH)
+pending_cache_path = resolve_path(PENDING_CACHE_PATH)
+validated_dict_path = resolve_path(VALIDATED_DICT_PATH)
+model_path = resolve_path("data/ml/models/onnx/slovorez-4b-ef-v1.0.onnx")
+text_path = "large.txt" # "/home/mich/projects/m2vbooks/good_wiki/IzbrannieStati/book.txt"
+
+
+cache = loaders.load_json(base_dict_path)
 cache_set = set(cache.keys())
 uncached = set()
 current_uncached = set()
@@ -37,7 +39,7 @@ missing_count = 0
 #######################
 
 # CONVERT PREDICTIONS TO STRING-MORPHEMETYPE PAIRS
-def prediction_to_string(word, word_predictions, reverse_morphemes_bies):
+def prediction_to_object(word, word_predictions, reverse_morphemes_bies):
     segments = []
 
     i = 0
@@ -93,42 +95,56 @@ reverse_char_vocab = { v: k for k, v in CHAR_VOCAB.items() }
 
 # --------- MAIN DRIVER ---------
 
+def get_onnx_session(model_path):
+    import onnxruntime as ort
+
+    available = ort.get_available_providers()
+    
+    providers = []
+    if 'TensorRTExecutionProvider' in available:
+        providers.append('TensorRTExecutionProvider')
+    if 'CUDAExecutionProvider' in available:
+        providers.append('CUDAExecutionProvider')
+    providers.append('CPUExecutionProvider')
+
+    print(providers)
+    
+    return ort.InferenceSession(model_path, providers=providers)
+
+
 def gpu_worker(model_path, gpu_queue, result_queue, device_id=0):
-    os.environ["KERAS_BACKEND"] = "torch"
-    import keras
-    import torch
-    
-    lp = LineProfiler()
-    
-    torch.cuda.set_device(device_id)
-    device = torch.device(f"cuda:{device_id}")
-    model = keras.models.load_model(model_path, compile=False)
+    import os
+    import site
+    import ctypes
 
-    # dummy = torch.zeros((1, 64), dtype=torch.long, device=device)
-    # model(dummy)
+    try:
+        sp = site.getsitepackages()[0]
+        cudnn_path = os.path.join(sp, "nvidia", "cudnn", "lib", "libcudnn.so.9")
+        cublas_path = os.path.join(sp, "nvidia", "cublas", "lib", "libcublas.so.12")
+        ctypes.CDLL(cudnn_path, mode=ctypes.RTLD_GLOBAL)
+        ctypes.CDLL(cublas_path, mode=ctypes.RTLD_GLOBAL)
+    except Exception as e:
+        print(f"Не удалось предзагрузить библиотеки: {e}")
 
-    def run_inference():
-        with torch.no_grad():
-            while True:
-                data = gpu_queue.get()
-                if data is None:
-                    break
+    import numpy as np
 
-                X_batch = torch.from_numpy(data).long().to(device)
+    session = get_onnx_session(model_path=model_path)
 
-                preds = model(X_batch)
-                preds = preds.half().cpu().numpy()
+    input_name = session.get_inputs()[0].name
 
-                result_queue.put({
-                    "preds": preds,
-                    "words": data
-                })
+    while True:
+        data = gpu_queue.get()
+        if data is None:
+            break
 
-    lp_wrapper = lp(run_inference)
-    lp_wrapper()
-    
-    print(f"\n{'='*20} GPU WORKER STATS {'='*20}")
-    lp.print_stats(stream=sys.stdout)
+        preds = session.run(None, {input_name: data})[0]
+
+        preds_half = preds.astype(np.float16)
+
+        result_queue.put({
+            "preds": preds_half,
+            "words": data
+        })
 
 def fast_padding(tokenized_list, maxlen=64):
     current_max = max(len(t) for t in tokenized_list)
@@ -140,55 +156,40 @@ def fast_padding(tokenized_list, maxlen=64):
     return arr
         
 def cpu_worker(task_queue, gpu_queue, cache_set, batch_size_limit=4096):
-    from line_profiler import LineProfiler
-    lp = LineProfiler()
-    
-    def process_data():
-        local_seen = set() 
-        get_char = CHAR_VOCAB.get
-        
-        pending_lower = []
-        append_lower = pending_lower.append
 
-        def send_to_gpu(lower_list):
-            char_tokenized = [[get_char(c, UNK_ID) for c in t] for t in lower_list]
-            X_input = fast_padding(char_tokenized, maxlen=64)
-            gpu_queue.put(X_input)
+    local_seen = set() 
+    get_char = CHAR_VOCAB.get        
+    pending_lower = []
+    append_lower = pending_lower.append
 
-        while True:
-            batch = task_queue.get()
-            if batch is None: break
+    def send_to_gpu(lower_list):
+        char_tokenized = [[get_char(c, UNK_ID) for c in t] for t in lower_list]
+        X_input = fast_padding(char_tokenized, maxlen=64)
+        gpu_queue.put(X_input)
 
-            tokens = batch["text"].lower().split('\0')[:-1]
+    while True:
+        batch = task_queue.get()
+        if batch is None: break
 
-            new_tokens = set(tokens) # { t for t in tokens if len(t) > 3 and len(t) < 65}
+        tokens = batch["text"].lower().split('\0')[:-1]
 
-            new_tokens = new_tokens - cache_set - local_seen
+        new_tokens = set(tokens) # { t for t in tokens if len(t) > 3 and len(t) < 65}
 
-            new_tokens = sorted(new_tokens)
+        new_tokens = new_tokens - cache_set - local_seen
 
-            for t_low in new_tokens:
-                append_lower(t_low)
-                local_seen.add(t_low)
-                if len(pending_lower) >= batch_size_limit:
-                    send_to_gpu(pending_lower)
-                    pending_lower.clear()
+        new_tokens = sorted(new_tokens)
 
+        for t_low in new_tokens:
+            append_lower(t_low)
+            local_seen.add(t_low)
+            if len(pending_lower) >= batch_size_limit:
+                send_to_gpu(pending_lower)
+                pending_lower.clear()
 
-        if pending_lower:
-            send_to_gpu(pending_lower)
-
-
-    lp_wrapper = lp(process_data)
-    lp_wrapper()
-
-    print(f"\n{'='*20} СPU WORKER STATS {'='*20}")
-    lp.print_stats(stream=sys.stdout)
+    if pending_lower:
+        send_to_gpu(pending_lower)
 
 def writer_worker(result_queue, output_path):
-    print("Writer worker started")
-    import json
-
     local_cache = {}
     
     while True:
@@ -203,14 +204,13 @@ def writer_worker(result_queue, output_path):
             
         for word, p in zip(words, preds):
             word = "".join([reverse_char_vocab.get(c, UNK_ID) for c in word if c != 0])
-            parsed = prediction_to_string(word, p, reverse_morphemes_bies)
+            parsed = prediction_to_object(word, p, reverse_morphemes_bies)
             local_cache[word] = parsed
 
         if len(local_cache) > 8192:
             print(next(iter(local_cache.items())))
             local_cache.clear()
 
-    print("Writer worker finished")
 
 MODEL_THNUM = 4
 NUM_CPU_WORKERS = 8
@@ -272,9 +272,9 @@ def main():
     print("All processes finished successfully")
 
 if __name__ == "__main__":
-    from line_profiler import LineProfiler
     lp = LineProfiler()
-
-    lp_wrapper = lp(main)
-    lp_wrapper()
+    @lp
+    def main_w():
+        main()
+    main_w()
     lp.print_stats()

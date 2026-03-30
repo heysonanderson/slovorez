@@ -66,6 +66,7 @@ def get_detailed_stats(remarks_path="./data/dictionaries/static_dictionary/remar
 
     return total_corrected, transitions, morpheme_stats
 
+get_detailed_stats()
 def parse_tikhonov_txt(path="./data/dictionaries/tikhonov",tags=False):
     if tags:
         from pymorphy3 import MorphAnalyzer

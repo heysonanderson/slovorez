@@ -24,16 +24,34 @@ morphemes_vocab = morphemes
 
 rev_morphemes_vocab = { v: k for k, v in morphemes.items() }
 
-morphemes_bies= {
-    PAD_TOKEN: PAD_ID,
-    UNK_TOKEN: UNK_ID,
-    "B-PREF": 2, "I-PREF": 3, "E-PREF": 4, "S-PREF": 5,
-    "B-ROOT": 6, "I-ROOT": 7, "E-ROOT": 8, "S-ROOT": 9,
-    "B-SUFF": 10, "I-SUFF": 11, "E-SUFF": 12, "S-SUFF": 13,
-    "B-END": 14, "I-END": 15, "E-END": 16, "S-END": 17,
-    "B-POSTFIX": 18, "I-POSTFIX": 19, "E-POSTFIX": 20, "S-POSTFIX": 21,
-    "B-LINK": 22, "I-LINK": 23, "E-LINK": 24, "S-LINK": 25,
-    "B-HYPH": 26, "I-HYPH": 27, "E-HYPH": 28, "S-HYPH": 29
+morphemes_bies = {
+    "<PAD>": 0,
+    "<UNK>": 1,
+    "B-PREF": 2,
+    "I-PREF": 3,
+    "E-PREF": 4,
+    "S-PREF": 5,
+    "B-ROOT": 6,
+    "I-ROOT": 7,
+    "E-ROOT": 8,
+    "S-ROOT": 9,
+    "B-SUFF": 10,
+    "I-SUFF": 11,
+    "E-SUFF": 12,
+    "S-SUFF": 13,
+    "B-END": 14,
+    "I-END": 15,
+    "E-END": 16,
+    "S-END": 17,
+    "B-POSTFIX": 18,
+    "I-POSTFIX": 19,
+    "E-POSTFIX": 20,
+    "S-POSTFIX": 21,
+    "B-LINK": 22,
+    "I-LINK": 23,
+    "E-LINK": 24,
+    "S-LINK": 25,
+    "S-HYPH": 26
 }
 
 class PosVocab(IntEnum):

@@ -14,10 +14,12 @@ PENDING_CACHE_PATH = "data/dictionaries/model_outputs/predictions-raw.jsonl"
 VALIDATED_DICT_PATH = "data/dictionaries/model_outputs/validated-dictionary.json"
 
 base_dict_path = resolve_path(BASE_DICT_PATH)
-pending_cache_path = resolve_path(PENDING_CACHE_PATH)
-validated_dict_path = resolve_path(VALIDATED_DICT_PATH)
-model_path = resolve_path("data/ml/models/onnx/slovorez-4b-ef-v1.0.onnx")
-text_path = "large.txt" # "/home/mich/projects/m2vbooks/good_wiki/IzbrannieStati/book.txt"
+pending_cache_path = loaders.ensure_dir(PENDING_CACHE_PATH)
+print(pending_cache_path)
+validated_dict_path = loaders.ensure_dir(VALIDATED_DICT_PATH)
+model_name = "slovorez-v1.0"
+model_path = resolve_path(f"data/ml/models/onnx/{model_name}.onnx")
+text_path = "text.txt"
 
 
 cache = loaders.load_json(base_dict_path)
@@ -39,7 +41,7 @@ missing_count = 0
 #######################
 
 # CONVERT PREDICTIONS TO STRING-MORPHEMETYPE PAIRS
-def prediction_to_object(word, word_predictions, reverse_morphemes_bies):
+def prediction_to_object(word, word_predictions, confidences, reverse_morphemes_bies):
     segments = []
 
     i = 0
@@ -54,7 +56,7 @@ def prediction_to_object(word, word_predictions, reverse_morphemes_bies):
 
         if label.startswith("S-"):
             morph_type = label[2:] if '-' in label else label
-            segments.append((word[i], morphemes_vocab[morph_type]))
+            segments.append((word[i], morphemes_vocab[morph_type], float(confidences[i])))
             i += 1
             
         elif label.startswith("B-"):
@@ -79,12 +81,13 @@ def prediction_to_object(word, word_predictions, reverse_morphemes_bies):
 
             end_idx = min(i, len(word))
             seg_text = ''.join(word[start:end_idx])
-            segments.append((seg_text, morphemes_vocab[morph_type]))
+            seg_confidence = np.mean(confidences[start:end_idx], axis=-1)
+            segments.append((seg_text, morphemes_vocab[morph_type], float(seg_confidence)))
             
         else:
             morph_type = label.split('-', 1)[-1] if '-' in label else label
             if i < len(word):
-                segments.append((word[i], morphemes_vocab[morph_type]))
+                segments.append((word[i], morphemes_vocab[morph_type], float(confidences[i])))
             i += 1
     
     return segments
@@ -189,8 +192,9 @@ def cpu_worker(task_queue, gpu_queue, cache_set, batch_size_limit=4096):
     if pending_lower:
         send_to_gpu(pending_lower)
 
-def writer_worker(result_queue, output_path):
-    local_cache = {}
+def writer_worker(result_queue, output_path, model_name):
+    local_cache = []
+    save = loaders.append_to_jsonl
     
     while True:
         res = result_queue.get()
@@ -200,15 +204,24 @@ def writer_worker(result_queue, output_path):
         words = res["words"]
         preds = res["preds"]
         if preds.ndim == 3:
+            maxconfs = np.max(preds, axis=-1)
+            meanconfs = np.mean(maxconfs, axis=-1)
             preds = np.argmax(preds, axis=-1)
             
-        for word, p in zip(words, preds):
+        for word, p, maxconf, meanconf in zip(words, preds, maxconfs, meanconfs):
             word = "".join([reverse_char_vocab.get(c, UNK_ID) for c in word if c != 0])
-            parsed = prediction_to_object(word, p, reverse_morphemes_bies)
-            local_cache[word] = parsed
+            parsed = prediction_to_object(word, p, maxconf, reverse_morphemes_bies)
+            local_cache.append({
+                "word": word,
+                "morphemes": parsed,
+                "confidence": float(meanconf),
+                "validated": False,
+                "model": model_name
+            })
 
         if len(local_cache) > 8192:
-            print(next(iter(local_cache.items())))
+            for word in local_cache:
+                save(output_path, word)
             local_cache.clear()
 
 
@@ -218,7 +231,6 @@ MODEL_BATCHSIZE = 2048
 TASK_QUEUE_LIMIT = 16
 
 def main():
-    multiprocessing.set_start_method('spawn', force=True)
     gpu_queue = multiprocessing.Queue()
     result_queue = multiprocessing.Queue()
     task_queue = multiprocessing.Queue(TASK_QUEUE_LIMIT)
@@ -226,7 +238,8 @@ def main():
     gpu_proc = multiprocessing.Process(target=gpu_worker, args=(model_path, gpu_queue, result_queue))
     gpu_proc.start()
 
-    writer_proc = multiprocessing.Process(target=writer_worker, args=(result_queue, "results.xml"))
+
+    writer_proc = multiprocessing.Process(target=writer_worker, args=(result_queue, pending_cache_path, model_name))
     writer_proc.start()
 
     inactive_workers = [multiprocessing.Process(target=cpu_worker, args=(task_queue, gpu_queue, cache_set, MODEL_BATCHSIZE)) for _ in range(NUM_CPU_WORKERS)]
@@ -273,8 +286,6 @@ def main():
 
 if __name__ == "__main__":
     lp = LineProfiler()
-    @lp
-    def main_w():
-        main()
-    main_w()
+    lp_wrapper = lp(main)
+    lp_wrapper()
     lp.print_stats()

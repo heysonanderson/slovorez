@@ -6,6 +6,7 @@ from slovorez.utils import resolve_path
 def ensure_dir(path: Union[str, Path]):
     abs_path = resolve_path(path)
     abs_path.parent.mkdir(parents=True, exist_ok=True)
+    return abs_path
 
 def to_json(json_object: Any, path: Union[str, Path]):
     abs_path = resolve_path(path)

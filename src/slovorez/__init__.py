@@ -1,1 +1,1 @@
-from .core.sentencer import Sentencer, FTSentencer, FFSentencer
+from .core.tokenizer import Tokenizer, FTTokenizer, FFTokenizer

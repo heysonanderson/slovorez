@@ -4,7 +4,8 @@
     "base_model": "resnet-4b-ef-2048-80-0.4-synth-fix"
   },
   "model_specs": {
-    "name": "resnet-4b-ef-2024-80-192-0.4-tikh-random",
+    "pretrain_name": "resnet-4b-ef-2024-80-192-0.4-tikh-random",
+    "name": "slovorez-test",
     "model_parameters": 685723,
     "dropout_rate": 0.4,
     "embedding_dim": 256,

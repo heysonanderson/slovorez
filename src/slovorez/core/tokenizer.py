@@ -3,10 +3,15 @@ from pathlib import Path
 from typing import Union
 from slovorez.utils import resolve_path
 
-class BaseSentencer:
-    pass
+class BaseTokenizer:
+    def get_batch_tokens(self, tolower=False):
+        batch = self.get_batch()
+        text = batch["text"]
+        if tolower:
+            text = text.lower()
+        return batch.split('\0')[:-1]
 
-class FFSentencer(slovorezCXX.FFSentencer, BaseSentencer):
+class FFTokenizer(slovorezCXX.FFSentencer, BaseTokenizer):
     def __init__(self, file_path: Union[str, Path], validated: bool=False):
                
         if not validated:
@@ -23,7 +28,7 @@ class FFSentencer(slovorezCXX.FFSentencer, BaseSentencer):
         
         self.file_path = abs_path
 
-class FTSentencer(slovorezCXX.FTSentencer, BaseSentencer):
+class FTTokenizer(slovorezCXX.FTSentencer, BaseTokenizer):
     def __init__(self, text: str, validated: bool=False):
         if not validated:    
             if not isinstance(text, str):
@@ -37,7 +42,7 @@ class FTSentencer(slovorezCXX.FTSentencer, BaseSentencer):
     def is_fopen(self):
         return True
 
-class Sentencer:
+class Tokenizer:
     """
     Factory: creating a class based on the source data
     """
@@ -45,9 +50,9 @@ class Sentencer:
         abs_path = resolve_path(source)
 
         if abs_path.is_file():
-            instance = FFSentencer(abs_path, validated=True)
+            instance = FFTokenizer(abs_path, validated=True)
         else:
-            instance = FTSentencer(str(source), validated=True)
+            instance = FTTokenizer(str(source), validated=True)
         
         instance.set_batch_size(batch_size)
         return instance

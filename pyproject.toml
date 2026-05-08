@@ -5,21 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "slovorez"
 version = "0.1.0"
-# Основные зависимости теперь включают легкий рантайм по умолчанию
 dependencies = [
     "onnxruntime",
-    "numpy"
+    "numpy>=1.20.0",
+    "tqdm"
 ]
 
 [project.optional-dependencies]
-# Ускорение для NVIDIA (подтянет все те библиотеки nvidia-*, что мы обсуждали)
 gpu = [
-    "onnxruntime-gpu",
-    "nvidia-cuda-runtime-cu12",
-    "nvidia-cudnn-cu12>=9.1.0"
-]
-
-dev = [
     "onnxruntime-gpu",
     "nvidia-cuda-runtime-cu12",
     "nvidia-cudnn-cu12>=9.1.0"

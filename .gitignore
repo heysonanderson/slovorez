@@ -20,3 +20,4 @@ env/
 large.txt
 .vscode
 data/dictionaries/model_outputs
+src/slovorez/analytics

@@ -1,1 +1,1 @@
-from slovorez.core.sentencer import Sentencer, FTSentencer, FFSentencer
+from slovorez.core.tokenizer import Tokenizer, FTTokenizer, FFTokenizer

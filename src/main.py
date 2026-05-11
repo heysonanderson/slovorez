@@ -10,14 +10,14 @@ def main():
     # path configuration
     CONFIG_PATH = "data/ml/models/onnx/slovorez-test.json"
     BASE_DICT_PATH = "data/dictionaries/static_dictionary/tikhonov-morphemes-pos.json"
-    TEXT_PATH = "large.txt"
+    TEXT_PATH = "text.txt"
     OUTPUT_PATH = "data/dictionaries/model_outputs/predictions-raw-test.jsonl"
 
     model = Slovorez.from_pretrained(
         config_path=CONFIG_PATH,
         base_dict_path=BASE_DICT_PATH,
         output_path=OUTPUT_PATH,
-        device="auto" # "cuda" or "cpu"
+        device="cuda" # "cuda" or "cpu"
     )
 
     logging.info("Model and components are ready. Processing")

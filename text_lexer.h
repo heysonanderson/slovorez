@@ -8,25 +8,15 @@
 #include <vector>
 #include "utf8_decoder.h"
 
-enum class TokenType {
-    NOTTKN,         ///< Not a token
-    WRDSPC,         ///< Word spacing
-    NWLINE,         ///< New line
-    ENWORD,         ///< English word
-    NUMBER,         ///< Number
-    RUWORD,         ///< Russian word
-    PNCTTN,         ///< Punctuation
-    UNKNWN          ///< Unknown character
-};
-constexpr const char* TokenTypeStr[] = {
-    "NOTTKN",
-    "WRDSPC",
-    "NWLINE",
-    "ENWORD",
-    "NUMBER",
-    "RUWORD",
-    "PNCTTN",
-    "UNKNWN"
+enum class TokenType : uint64_t {
+    NOTTKN = 0,         ///< Not a token
+    WRDSPC = 1,         ///< Word spacing
+    NWLINE = 2,         ///< New line
+    ENWORD = 4,         ///< English word
+    NUMBER = 8,         ///< Number
+    RUWORD = 16,        ///< Russian word
+    PNCTTN = 32,        ///< Punctuation
+    UNKNWN = 64         ///< Unknown character
 };
 
 typedef struct {

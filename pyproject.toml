@@ -6,19 +6,16 @@ build-backend = "setuptools.build_meta"
 name = "slovorez"
 version = "0.1.0"
 dependencies = [
-    "keras",
-    "pandas"
+    "onnxruntime",
+    "numpy>=1.20.0",
+    "tqdm"
 ]
 
 [project.optional-dependencies]
-tf = ["tensorflow-cpu"]
-tf-gpu = ["tensorflow[and-cuda]"]
-torch = ["torch"]
-
-dev = [
-    "tensorflow-cpu",
-    "torch",
-    "pymorphy3"
+gpu = [
+    "onnxruntime-gpu",
+    "nvidia-cuda-runtime-cu12",
+    "nvidia-cudnn-cu12>=9.1.0"
 ]
 
 [tool.setuptools.packages.find]

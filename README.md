@@ -73,7 +73,7 @@ This should create shared library file in the root folder
 cd slovorez/
 ```
 
-#### Activate venv (conda)
+#### Activate venv
 
 ```bash
 conda activate new_env
@@ -81,14 +81,11 @@ conda activate new_env
 
 #### Install dependedncies
 ```bash
-# CPU 
-pip install .[tf]
+# Default (CPU) 
+pip install .
 
-# Tensorflow GPU
-pip install .[tf-gpu]
-
-# PyTorch GPU
-PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cu130 pip install .[torch]
+# CUDA (GPU)
+pip install .[gpu]
 ```
 
 #### Run demo

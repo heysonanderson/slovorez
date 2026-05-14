@@ -10,7 +10,9 @@
 namespace py = pybind11;
 using namespace py::literals;
 
-constexpr size_t DEFAULT_BATCH_SIZE = 1048576;
+constexpr size_t DEFAULT_BATCH_SIZE = 65536;
+constexpr size_t DEFAULT_TOKEN_MIN_LEN = 0;
+constexpr size_t DEFAULT_TOKEN_MAX_LEN = 512;
 
 class FromTextSentencer {
 private:
@@ -22,6 +24,8 @@ private:
     TokenType* batch_types_buf = nullptr;
     size_t batch_size = DEFAULT_BATCH_SIZE;
     uint64_t filter_mask = 0xFFFFFFFFFFFFFFFF;
+    size_t token_min_len = DEFAULT_TOKEN_MIN_LEN;
+    size_t token_max_len = DEFAULT_TOKEN_MAX_LEN;
 
 public:
     FromTextSentencer(const char* str, size_t str_len) : text_len(str_len), text_pos(0)
@@ -45,6 +49,16 @@ public:
         this->filter_mask = filter_mask;
     }
 
+    void set_token_min_len(size_t token_min_len)
+    {
+        this->token_min_len = token_min_len;
+    }
+
+    void set_token_max_len(size_t token_max_len)
+    {
+        this->token_max_len = token_max_len;
+    }
+
     py::dict get_batch()
     {
         size_t batch_str_size = 0;
@@ -54,7 +68,9 @@ public:
             if (slovorez_lexer_token_get(&this->lctx, (unsigned char)this->raw_text[this->text_pos++]))
             {
                 const Token& token = this->lctx.rtoken;
-                if (static_cast<uint64_t>(token.type) & this->filter_mask)
+                const bool allowed_type = static_cast<uint64_t>(token.type) & this->filter_mask;
+                const bool allowed_size = this->token_min_len <= token.size && token.size <= this->token_max_len;
+                if (allowed_type && allowed_size)
                 {
                     for (int i = 0; i < token.size; ++i)
                     {
@@ -109,6 +125,8 @@ private:
     TokenType* batch_types_buf = nullptr;
     size_t batch_size = DEFAULT_BATCH_SIZE;
     uint64_t filter_mask = 0xFFFFFFFFFFFFFFFF;
+    size_t token_min_len = DEFAULT_TOKEN_MIN_LEN;
+    size_t token_max_len = DEFAULT_TOKEN_MAX_LEN;
 
 public:
     FromFileSentencer(const std::string& fpath)
@@ -131,6 +149,16 @@ public:
         this->filter_mask = filter_mask;
     }
 
+    void set_token_min_len(size_t token_min_len)
+    {
+        this->token_min_len = token_min_len;
+    }
+
+    void set_token_max_len(size_t token_max_len)
+    {
+        this->token_max_len = token_max_len;
+    }
+
     bool is_fopen()
     {
         return this->f != nullptr;
@@ -150,7 +178,9 @@ public:
             if (slovorez_lexer_token_get(&this->lctx, (unsigned char)c))
             {
                 const Token& token = this->lctx.rtoken;
-                if (static_cast<uint64_t>(token.type) & this->filter_mask)
+                const bool allowed_type = static_cast<uint64_t>(token.type) & this->filter_mask;
+                const bool allowed_size = this->token_min_len <= token.size && token.size <= this->token_max_len;
+                if (allowed_type && allowed_size)
                 {
                     for (int i = 0; i < token.size; ++i)
                     {
@@ -249,6 +279,8 @@ PYBIND11_MODULE(slovorezCXX, m)
         )
         .def("set_batch_size", &FromTextSentencer::set_batch_size)
         .def("set_filter", &FromTextSentencer::set_filter)
+        .def("set_token_min_len", &FromTextSentencer::set_token_min_len)
+        .def("set_token_max_len", &FromTextSentencer::set_token_max_len)
         .def("get_batch", &FromTextSentencer::get_batch)
         .def_property_readonly("stream", [](FromTextSentencer& self)
             {
@@ -276,6 +308,8 @@ PYBIND11_MODULE(slovorezCXX, m)
         .def("is_fopen", &FromFileSentencer::is_fopen)
         .def("set_batch_size", &FromFileSentencer::set_batch_size)
         .def("set_filter", &FromFileSentencer::set_filter)
+        .def("set_token_min_len", &FromFileSentencer::set_token_min_len)
+        .def("set_token_max_len", &FromFileSentencer::set_token_max_len)
         .def("get_batch", &FromFileSentencer::get_batch)
         .def_property_readonly("stream", [](FromFileSentencer& self)
             {

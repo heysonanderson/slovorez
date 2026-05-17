@@ -5,17 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "slovorez"
 version = "0.1.0"
+requires-python = ">=3.10"
 dependencies = [
-    "onnxruntime",
-    "numpy>=1.20.0",
-    "tqdm"
+    "numpy"
 ]
 
 [project.optional-dependencies]
 gpu = [
-    "onnxruntime-gpu",
-    "nvidia-cuda-runtime-cu12",
-    "nvidia-cudnn-cu12>=9.1.0"
+    "onnxruntime-gpu>=1.21.0"
+]
+cpu = [
+    "onnxruntime>=1.21.0"
 ]
 
 [tool.setuptools.packages.find]

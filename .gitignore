@@ -5,13 +5,10 @@ build/
 *.dll
 *.exp
 *.lib
-
 *.egg-info
 *.pycache
 *__pycache__
 *.pyc
-data/dictionaries/*.json
-data/dictionaries/*synth.txt
 myenv/
 venv/
 .venv/
@@ -19,5 +16,4 @@ env/
 *.pstat
 large.txt
 .vscode
-data/dictionaries/model_outputs
-src/slovorez/analytics
+*predictions.jsonl

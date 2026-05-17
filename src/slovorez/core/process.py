@@ -27,7 +27,7 @@ def _decode_word_bies(
     confidences: np.ndarray,
     rev_bies_vocab: dict[int, str],
     morpheme_type_vocab: dict[str, int],
-    repair: bool = True
+    repair: bool = True,
 ) -> tuple[list[tuple[str, int, float]], bool]:
     segments = []
     current_morpheme = ""
@@ -36,15 +36,15 @@ def _decode_word_bies(
     has_errors = False
 
     word_len = len(word)
-    active_tags = tag_ids[:word_len]
+    active_tags  = tag_ids[:word_len]
     active_confs = confidences[:word_len]
 
     for i, (char, tag_id) in enumerate(zip(word, active_tags)):
-        tag = rev_bies_vocab.get(tag_id, "S-ROOT")
-        prefix = tag[:2]
+        tag        = rev_bies_vocab.get(tag_id, "S-ROOT")
+        prefix     = tag[:2]
         m_type_str = tag[2:]
-        m_type_id = morpheme_type_vocab.get(m_type_str, 0)
-        conf = float(active_confs[i])
+        m_type_id  = morpheme_type_vocab.get(m_type_str, 0)
+        conf       = float(active_confs[i])
 
         if repair and prefix in ("E-", "I-") and not current_morpheme:
             has_errors = True
@@ -56,8 +56,8 @@ def _decode_word_bies(
                 has_errors = True
                 segments.append((current_morpheme, current_type, float(np.mean(current_confs))))
             current_morpheme = char
-            current_type = m_type_id
-            current_confs = [conf]
+            current_type     = m_type_id
+            current_confs    = [conf]
 
         elif prefix == "I-":
             current_morpheme += char
@@ -68,7 +68,7 @@ def _decode_word_bies(
             current_confs.append(conf)
             segments.append((current_morpheme, current_type, float(np.mean(current_confs))))
             current_morpheme = ""
-            current_confs = []
+            current_confs    = []
 
         elif prefix == "S-":
             if current_morpheme:
@@ -78,7 +78,8 @@ def _decode_word_bies(
             segments.append((char, m_type_id, conf))
 
     if current_morpheme:
-        if repair: has_errors = True
+        if repair:
+            has_errors = True
         segments.append((current_morpheme, current_type, float(np.mean(current_confs))))
 
     return segments, has_errors
@@ -96,8 +97,8 @@ class SlovorezTokenizer:
     is available for custom vocabs or testing.
 
     Args:
-        char_vocab:  mapping char -- int. Loaded from config["mapping"]["tokenizer_vocab"].
-        bies_vocab:  mapping BIES-tag -- int. Loaded from config["mapping"]["label2id"].
+        char_vocab:  mapping char -> int. Loaded from config["mapping"]["tokenizer_vocab"].
+        bies_vocab:  mapping BIES-tag -> int. Loaded from config["mapping"]["label2id"].
         maxlen:      maximum sequence length. Loaded from config["model_specs"]["maxlen"].
         do_lower:    lowercase words before encoding. False is recommended --
                      do lowercasing upstream before tokenization for best throughput.
@@ -112,8 +113,8 @@ class SlovorezTokenizer:
     ):
         self.char_vocab = char_vocab
         self.bies_vocab = bies_vocab
-        self.maxlen = maxlen
-        self.do_lower = do_lower
+        self.maxlen     = maxlen
+        self.do_lower   = do_lower
 
         self.rev_char_vocab: dict[int, str] = {v: k for k, v in char_vocab.items()}
         self.rev_bies_vocab: dict[int, str] = {v: k for k, v in bies_vocab.items()}
@@ -129,22 +130,47 @@ class SlovorezTokenizer:
     def from_config(cls, config: dict) -> SlovorezTokenizer:
         """Instantiate from a model config dict (loaded from JSON).
 
-        Expected keys: config["mapping"]["tokenizer_vocab"],
-                       config["mapping"]["label2id"],
-                       config["model_specs"]["maxlen"].
+        Expected keys:
+            config["mapping"]["tokenizer_vocab"],
+            config["mapping"]["label2id"],
+            config["model_specs"]["maxlen"].
 
         Example::
 
-            config = load_json("slovorez-v1.0.json")
+            config = load_json("models/slovorez-v1/config.json")
             tokenizer = SlovorezTokenizer.from_config(config)
         """
         mapping = config["mapping"]
-        maxlen = config["model_specs"]["maxlen"]
+        maxlen  = config["model_specs"]["maxlen"]
         return cls(
             char_vocab=mapping["tokenizer_vocab"],
             bies_vocab=mapping["label2id"],
             maxlen=maxlen,
         )
+
+    def to_config(self) -> dict:
+        """Serialize the tokenizer state back to a config-compatible dict.
+
+        The returned dict is a valid argument to ``from_config()``, so a
+        round-trip is guaranteed::
+
+            tokenizer == SlovorezTokenizer.from_config(tokenizer.to_config())
+
+        Primary use: passing tokenizer state to worker processes without
+        exposing internal attributes directly.
+
+        Returns:
+            Minimal config dict with keys ``mapping`` and ``model_specs``.
+        """
+        return {
+            "mapping": {
+                "tokenizer_vocab": self.char_vocab,
+                "label2id":        self.bies_vocab,
+            },
+            "model_specs": {
+                "maxlen": self.maxlen,
+            },
+        }
 
     # ------------------------------------------------------------------
     # Encoding
@@ -157,7 +183,7 @@ class SlovorezTokenizer:
             np.ndarray of shape (len(words), min(max_word_len, maxlen)), dtype=int32.
         """
         get_char = self.char_vocab.get
-        unk_id = self._unk_id
+        unk_id   = self._unk_id
         if self.do_lower:
             words = [w.lower() for w in words]
         char_tokenized = [[get_char(c, unk_id) for c in w] for w in words]
@@ -181,37 +207,41 @@ class SlovorezTokenizer:
             "".join(get_char(idx, "") for idx in row if idx != self._pad_id)
             for row in encoded
         ]
-    
 
     def decode_predictions_detail(
         self,
         words: list[str],
         logits: np.ndarray,
         model_name: str,
-        repair: bool = True
+        repair: bool = True,
     ) -> Generator[dict, None, None]:
-        tag_ids = np.argmax(logits, axis=-1)
+        """Decode logits into rich result dicts, one per word.
+
+        Yields:
+            Dict with keys: word, morphemes, confidence, model, repaired, validated.
+        """
+        tag_ids   = np.argmax(logits, axis=-1)
         max_confs = np.max(logits, axis=-1)
 
         for i, word in enumerate(words):
             segments, repaired = _decode_word_bies(
-                word, 
-                tag_ids[i], 
-                max_confs[i], 
-                self.rev_bies_vocab, 
+                word,
+                tag_ids[i],
+                max_confs[i],
+                self.rev_bies_vocab,
                 MORPHEME_TYPE_VOCAB,
-                repair=repair
+                repair=repair,
             )
-            
+
             word_conf = float(np.mean(max_confs[i, :len(word)]))
 
             yield {
-                "word": word,
-                "morphemes": segments,
+                "word":       word,
+                "morphemes":  segments,
                 "confidence": round(word_conf, 4),
-                "model": model_name,
-                "repaired": repaired,
-                "validated": False
+                "model":      model_name,
+                "repaired":   repaired,
+                "validated":  False,
             }
 
     def decode_predictions(
@@ -229,7 +259,7 @@ class SlovorezTokenizer:
         Yields:
             For each word: list of (morpheme_text, morpheme_type_id, confidence).
 
-        Example output for "башня":
+        Example output for "башня"::
 
             [("баш", 3, 0.91), ("н", 4, 0.76), ("я", 5, 0.88)]
         """

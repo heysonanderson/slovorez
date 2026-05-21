@@ -1,4 +1,4 @@
-#include "text_lexer.h"
+#include "lexer.h"
 
 static inline void _slovorez_lexer_token_insert_utf8_char(Token* token, UTF8Char* utf8c)
 {

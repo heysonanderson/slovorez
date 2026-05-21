@@ -13,7 +13,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(pybind11)
 
-pybind11_add_module(slovorezCXX sentencer.cc text_lexer.cc utf8_decoder.h)
+pybind11_add_module(slovorezCXX tokenizer.cc lexer.cc utf8_decoder.h)
 if(MINGW)
     target_link_options(slovorezCXX PRIVATE "-static-libgcc" "-static-libstdc++" "-static")
 endif()

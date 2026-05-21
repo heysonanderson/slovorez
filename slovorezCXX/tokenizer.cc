@@ -23,7 +23,6 @@ private:
     char* batch_str_buf = nullptr;
     TokenType* batch_types_buf = nullptr;
     size_t batch_size = DEFAULT_BATCH_SIZE;
-    uint64_t filter_mask = 0xFFFFFFFFFFFFFFFF;
     size_t token_min_len = DEFAULT_TOKEN_MIN_LEN;
     size_t token_max_len = DEFAULT_TOKEN_MAX_LEN;
 
@@ -46,7 +45,7 @@ public:
 
     void set_filter(uint64_t filter_mask)
     {
-        this->filter_mask = filter_mask;
+        this->lctx.filter_mask = filter_mask;
     }
 
     void set_token_min_len(size_t token_min_len)
@@ -68,9 +67,8 @@ public:
             if (slovorez_lexer_token_get(&this->lctx, (unsigned char)this->raw_text[this->text_pos++]))
             {
                 const Token& token = this->lctx.rtoken;
-                const bool allowed_type = static_cast<uint64_t>(token.type) & this->filter_mask;
                 const bool allowed_size = this->token_min_len <= token.size && token.size <= this->token_max_len;
-                if (allowed_type && allowed_size)
+                if (allowed_size)
                 {
                     for (int i = 0; i < token.size; ++i)
                     {
@@ -124,7 +122,6 @@ private:
     char* batch_str_buf = nullptr;
     TokenType* batch_types_buf = nullptr;
     size_t batch_size = DEFAULT_BATCH_SIZE;
-    uint64_t filter_mask = 0xFFFFFFFFFFFFFFFF;
     size_t token_min_len = DEFAULT_TOKEN_MIN_LEN;
     size_t token_max_len = DEFAULT_TOKEN_MAX_LEN;
 
@@ -146,7 +143,7 @@ public:
 
     void set_filter(uint64_t filter_mask)
     {
-        this->filter_mask = filter_mask;
+        this->lctx.filter_mask = filter_mask;
     }
 
     void set_token_min_len(size_t token_min_len)
@@ -178,9 +175,8 @@ public:
             if (slovorez_lexer_token_get(&this->lctx, (unsigned char)c))
             {
                 const Token& token = this->lctx.rtoken;
-                const bool allowed_type = static_cast<uint64_t>(token.type) & this->filter_mask;
                 const bool allowed_size = this->token_min_len <= token.size && token.size <= this->token_max_len;
-                if (allowed_type && allowed_size)
+                if (allowed_size)
                 {
                     for (int i = 0; i < token.size; ++i)
                     {

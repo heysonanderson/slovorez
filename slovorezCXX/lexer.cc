@@ -7,8 +7,12 @@ static inline void _slovorez_lexer_token_insert_utf8_char(Token* token, UTF8Char
 
 static inline void _slovorez_lexer_new_token(LexerContext* lctx)
 {
-    lctx->ctxtoken.type = slovorez_get_utf8_tt(lctx->utf8c);
-    _slovorez_lexer_token_insert_utf8_char(&lctx->ctxtoken, &lctx->utf8c);
+    const TokenType tt = slovorez_get_utf8_tt(lctx->utf8c);
+    if (static_cast<uint64_t>(tt) & lctx->filter_mask);
+    {
+        lctx->ctxtoken.type = tt;
+        _slovorez_lexer_token_insert_utf8_char(&lctx->ctxtoken, &lctx->utf8c);
+    }
 }
 
 static inline void _slovorez_lexer_token_finalize(LexerContext* lctx)
@@ -57,6 +61,7 @@ void slovorez_lexer_init(LexerContext* lctx)
 {
     memset(&lctx->rtoken, 0, sizeof(Token));
     memset(&lctx->ctxtoken, 0, sizeof(Token));
+    lctx->filter_mask = 0xFFFFFFFFFFFFFFFF;
     slovorez_utf8_decoder_char_reset(&lctx->utf8c);
 }
 

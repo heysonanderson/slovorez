@@ -34,7 +34,7 @@ static bool _slovorez_lexer_token_try_finalize(LexerContext* lctx)
         case TokenType::NUMBER:
         case TokenType::RUWORD:
         {
-            TokenType utf8_tt = slovorez_get_utf8_tt(lctx->utf8c);
+            const TokenType utf8_tt = slovorez_get_utf8_tt(lctx->utf8c);
             if (lctx->ctxtoken.type == utf8_tt)
             {
                 _slovorez_lexer_token_insert_utf8_char(&lctx->ctxtoken, &lctx->utf8c);
@@ -62,7 +62,6 @@ void slovorez_lexer_init(LexerContext* lctx)
     memset(&lctx->rtoken, 0, sizeof(Token));
     memset(&lctx->ctxtoken, 0, sizeof(Token));
     lctx->filter_mask = 0xFFFFFFFFFFFFFFFF;
-    slovorez_utf8_decoder_char_reset(&lctx->utf8c);
 }
 
 bool slovorez_lexer_token_get(LexerContext* lctx, unsigned char c)
@@ -71,7 +70,5 @@ bool slovorez_lexer_token_get(LexerContext* lctx, unsigned char c)
     {
         return false;
     }
-    bool token_ready = _slovorez_lexer_token_try_finalize(lctx);
-    slovorez_utf8_decoder_char_reset(&lctx->utf8c);
-    return token_ready;
+    return _slovorez_lexer_token_try_finalize(lctx);
 }

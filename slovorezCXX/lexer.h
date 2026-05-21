@@ -37,8 +37,7 @@ bool slovorez_lexer_token_get(LexerContext* lctx, unsigned char c);
 
 static TokenType slovorez_get_utf8_tt(const UTF8Char& utf8c)
 {
-    uint32_t bval = utf8c.get_bval();
-    switch (bval)
+    switch (utf8c.code)
     {
         case 0x0A:          // New line
         {

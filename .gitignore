@@ -17,3 +17,5 @@ env/
 large.txt
 .vscode
 *predictions.jsonl
+data/
+Debug/

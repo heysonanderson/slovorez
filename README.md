@@ -82,7 +82,7 @@ conda activate new_env
 #### Install dependedncies
 ```bash
 # Default (CPU) 
-pip install .
+pip install .[cpu]
 
 # CUDA (GPU)
 pip install .[gpu]

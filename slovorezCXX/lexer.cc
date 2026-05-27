@@ -8,7 +8,7 @@ static inline void _slovorez_lexer_token_insert_utf8_char(Token* token, UTF8Char
 static inline void _slovorez_lexer_new_token(LexerContext* lctx)
 {
     const TokenType tt = slovorez_get_utf8_tt(lctx->utf8c);
-    if (static_cast<uint64_t>(tt) & lctx->filter_mask);
+    if (static_cast<uint64_t>(tt) & lctx->filter_mask)
     {
         lctx->ctxtoken.type = tt;
         _slovorez_lexer_token_insert_utf8_char(&lctx->ctxtoken, &lctx->utf8c);

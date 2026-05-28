@@ -5,7 +5,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 
-#include "text_lexer.h"
+#include "lexer.h"
 
 namespace py = pybind11;
 using namespace py::literals;
@@ -14,7 +14,7 @@ constexpr size_t DEFAULT_BATCH_SIZE = 65536;
 constexpr size_t DEFAULT_TOKEN_MIN_LEN = 0;
 constexpr size_t DEFAULT_TOKEN_MAX_LEN = 512;
 
-class FromTextSentencer {
+class FromTextTokenizer {
 private:
     LexerContext lctx;
     char* raw_text = nullptr;
@@ -23,12 +23,11 @@ private:
     char* batch_str_buf = nullptr;
     TokenType* batch_types_buf = nullptr;
     size_t batch_size = DEFAULT_BATCH_SIZE;
-    uint64_t filter_mask = 0xFFFFFFFFFFFFFFFF;
     size_t token_min_len = DEFAULT_TOKEN_MIN_LEN;
     size_t token_max_len = DEFAULT_TOKEN_MAX_LEN;
 
 public:
-    FromTextSentencer(const char* str, size_t str_len) : text_len(str_len), text_pos(0)
+    FromTextTokenizer(const char* str, size_t str_len) : text_len(str_len), text_pos(0)
     {
         this->raw_text = (char*)malloc(str_len);
         this->batch_str_buf = (char*)malloc((512 * this->batch_size + this->batch_size) * sizeof(char));
@@ -46,7 +45,7 @@ public:
 
     void set_filter(uint64_t filter_mask)
     {
-        this->filter_mask = filter_mask;
+        this->lctx.filter_mask = filter_mask;
     }
 
     void set_token_min_len(size_t token_min_len)
@@ -68,13 +67,12 @@ public:
             if (slovorez_lexer_token_get(&this->lctx, (unsigned char)this->raw_text[this->text_pos++]))
             {
                 const Token& token = this->lctx.rtoken;
-                const bool allowed_type = static_cast<uint64_t>(token.type) & this->filter_mask;
                 const bool allowed_size = this->token_min_len <= token.size && token.size <= this->token_max_len;
-                if (allowed_type && allowed_size)
+                if (allowed_size)
                 {
                     for (int i = 0; i < token.size; ++i)
                     {
-                        memcpy(this->batch_str_buf + batch_str_size, token.data[i].data, token.data[i].size);
+                        memcpy(this->batch_str_buf + batch_str_size, token.data[i].bytes, token.data[i].size);
                         batch_str_size += token.data[i].size;
                     }
                     this->batch_str_buf[batch_str_size++] = '\0';
@@ -97,7 +95,7 @@ public:
         return outbuf;
     }
 
-    ~FromTextSentencer()
+    ~FromTextTokenizer()
     {
         if (this->raw_text != nullptr)
         {
@@ -117,19 +115,18 @@ public:
     }
 };
 
-class FromFileSentencer {
+class FromFileTokenizer {
 private:
     LexerContext lctx;
     FILE* f = nullptr;
     char* batch_str_buf = nullptr;
     TokenType* batch_types_buf = nullptr;
     size_t batch_size = DEFAULT_BATCH_SIZE;
-    uint64_t filter_mask = 0xFFFFFFFFFFFFFFFF;
     size_t token_min_len = DEFAULT_TOKEN_MIN_LEN;
     size_t token_max_len = DEFAULT_TOKEN_MAX_LEN;
 
 public:
-    FromFileSentencer(const std::string& fpath)
+    FromFileTokenizer(const std::string& fpath)
     {
         this->f = fopen(fpath.c_str(), "r");
         this->batch_str_buf = (char*)malloc((512 * this->batch_size + this->batch_size) * sizeof(char));
@@ -146,7 +143,7 @@ public:
 
     void set_filter(uint64_t filter_mask)
     {
-        this->filter_mask = filter_mask;
+        this->lctx.filter_mask = filter_mask;
     }
 
     void set_token_min_len(size_t token_min_len)
@@ -178,13 +175,12 @@ public:
             if (slovorez_lexer_token_get(&this->lctx, (unsigned char)c))
             {
                 const Token& token = this->lctx.rtoken;
-                const bool allowed_type = static_cast<uint64_t>(token.type) & this->filter_mask;
                 const bool allowed_size = this->token_min_len <= token.size && token.size <= this->token_max_len;
-                if (allowed_type && allowed_size)
+                if (allowed_size)
                 {
                     for (int i = 0; i < token.size; ++i)
                     {
-                        memcpy(this->batch_str_buf + batch_str_size, token.data[i].data, token.data[i].size);
+                        memcpy(this->batch_str_buf + batch_str_size, token.data[i].bytes, token.data[i].size);
                         batch_str_size += token.data[i].size;
                     }
                     this->batch_str_buf[batch_str_size++] = '\0';
@@ -207,7 +203,7 @@ public:
         return outbuf;
     }
 
-    ~FromFileSentencer()
+    ~FromFileTokenizer()
     {
         if (this->f != nullptr)
         {
@@ -227,13 +223,13 @@ public:
 };
 
 typedef struct FromTextStream {
-    FromTextSentencer &sentencer;
-    FromTextStream(FromTextSentencer& s) : sentencer(s) {}
+    FromTextTokenizer &sentencer;
+    FromTextStream(FromTextTokenizer& s) : sentencer(s) {}
 } FromTextStream;
 
 typedef struct FromFileStream {
-    FromFileSentencer &sentencer;
-    FromFileStream(FromFileSentencer& s) : sentencer(s) {}
+    FromFileTokenizer &sentencer;
+    FromFileStream(FromFileTokenizer& s) : sentencer(s) {}
 } FromFileStream;
 
 PYBIND11_MODULE(slovorezCXX, m)
@@ -269,20 +265,20 @@ PYBIND11_MODULE(slovorezCXX, m)
         )
     ;
 
-    py::class_<FromTextSentencer>(m, "FTSentencer")
+    py::class_<FromTextTokenizer>(m, "FTTokenizer")
         .def(py::init([](const std::string& s)
                 {
-                    return new FromTextSentencer(s.data(), s.size());
+                    return new FromTextTokenizer(s.data(), s.size());
                 }
             ),
             py::arg("text")
         )
-        .def("set_batch_size", &FromTextSentencer::set_batch_size)
-        .def("set_filter", &FromTextSentencer::set_filter)
-        .def("set_token_min_len", &FromTextSentencer::set_token_min_len)
-        .def("set_token_max_len", &FromTextSentencer::set_token_max_len)
-        .def("get_batch", &FromTextSentencer::get_batch)
-        .def_property_readonly("stream", [](FromTextSentencer& self)
+        .def("set_batch_size", &FromTextTokenizer::set_batch_size)
+        .def("set_filter", &FromTextTokenizer::set_filter)
+        .def("set_token_min_len", &FromTextTokenizer::set_token_min_len)
+        .def("set_token_max_len", &FromTextTokenizer::set_token_max_len)
+        .def("get_batch", &FromTextTokenizer::get_batch)
+        .def_property_readonly("stream", [](FromTextTokenizer& self)
             {
                 return FromTextStream(self);
             }
@@ -303,15 +299,15 @@ PYBIND11_MODULE(slovorezCXX, m)
         )
     ;
 
-    py::class_<FromFileSentencer>(m, "FFSentencer")
+    py::class_<FromFileTokenizer>(m, "FFTokenizer")
         .def(py::init<const std::string&>(), py::arg("fpath"))
-        .def("is_fopen", &FromFileSentencer::is_fopen)
-        .def("set_batch_size", &FromFileSentencer::set_batch_size)
-        .def("set_filter", &FromFileSentencer::set_filter)
-        .def("set_token_min_len", &FromFileSentencer::set_token_min_len)
-        .def("set_token_max_len", &FromFileSentencer::set_token_max_len)
-        .def("get_batch", &FromFileSentencer::get_batch)
-        .def_property_readonly("stream", [](FromFileSentencer& self)
+        .def("is_fopen", &FromFileTokenizer::is_fopen)
+        .def("set_batch_size", &FromFileTokenizer::set_batch_size)
+        .def("set_filter", &FromFileTokenizer::set_filter)
+        .def("set_token_min_len", &FromFileTokenizer::set_token_min_len)
+        .def("set_token_max_len", &FromFileTokenizer::set_token_max_len)
+        .def("get_batch", &FromFileTokenizer::get_batch)
+        .def_property_readonly("stream", [](FromFileTokenizer& self)
             {
                 return FromFileStream(self);
             }

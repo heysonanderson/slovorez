@@ -1,4 +1,4 @@
-slovorezCXX/build/
+build/
 *.so
 *.dylib
 *.pyd

@@ -11,7 +11,7 @@ class BaseTokenizer:
             text = text.lower()
         return batch.split('\0')[:-1]
 
-class FFTokenizer(slovorezCXX.FFSentencer, BaseTokenizer):
+class FFTokenizer(slovorezCXX.FFTokenizer, BaseTokenizer):
     def __init__(self, file_path: Union[str, Path], validated: bool=False):
                
         if not validated:
@@ -28,7 +28,7 @@ class FFTokenizer(slovorezCXX.FFSentencer, BaseTokenizer):
         
         self.file_path = abs_path
 
-class FTTokenizer(slovorezCXX.FTSentencer, BaseTokenizer):
+class FTTokenizer(slovorezCXX.FTTokenizer, BaseTokenizer):
     def __init__(self, text: str, validated: bool=False):
         if not validated:    
             if not isinstance(text, str):

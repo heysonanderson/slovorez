@@ -11,13 +11,14 @@
     "embedding_dim": 256,
     "hidden_dim": 192,
     "maxlen": 64,
-    "inputs": [
-      "word"
-    ],
-    "outputs": [
-      "morpheme"
-    ],
+    "inputs": ["word"],
+    "outputs": ["morpheme"],
     "bies_applied": true
+  },
+  "resources": {
+    "weights":   "slovorez-test.onnx",
+    "base_dict": "base_dict.json",
+    "output":    "predictions.jsonl"
   },
   "hyperparameters": {
     "init_lr": 0.002,

@@ -72,7 +72,7 @@ public:
                 {
                     for (int i = 0; i < token.size; ++i)
                     {
-                        memcpy(this->batch_str_buf + batch_str_size, token.data[i].data, token.data[i].size);
+                        memcpy(this->batch_str_buf + batch_str_size, token.data[i].bytes, token.data[i].size);
                         batch_str_size += token.data[i].size;
                     }
                     this->batch_str_buf[batch_str_size++] = '\0';
@@ -180,7 +180,7 @@ public:
                 {
                     for (int i = 0; i < token.size; ++i)
                     {
-                        memcpy(this->batch_str_buf + batch_str_size, token.data[i].data, token.data[i].size);
+                        memcpy(this->batch_str_buf + batch_str_size, token.data[i].bytes, token.data[i].size);
                         batch_str_size += token.data[i].size;
                     }
                     this->batch_str_buf[batch_str_size++] = '\0';

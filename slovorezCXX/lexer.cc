@@ -7,8 +7,8 @@ static inline void _slovorez_lexer_token_insert_utf8_char(Token* token, UTF8Char
 
 static inline void _slovorez_lexer_new_token(LexerContext* lctx)
 {
-    const TokenType tt = slovorez_get_utf8_tt(lctx->utf8c);
-    if (static_cast<uint64_t>(tt) & lctx->filter_mask)
+    const TokenType tt = UnicodeTrie::get().lookup(lctx->utf8c.codepoint);
+    if (slovorez_token_filter_match(tt, lctx->filter_mask))
     {
         lctx->ctxtoken.type = tt;
         _slovorez_lexer_token_insert_utf8_char(&lctx->ctxtoken, &lctx->utf8c);
@@ -34,8 +34,8 @@ static bool _slovorez_lexer_token_try_finalize(LexerContext* lctx)
         case TokenType::NUMBER:
         case TokenType::RUWORD:
         {
-            const TokenType utf8_tt = slovorez_get_utf8_tt(lctx->utf8c);
-            if (lctx->ctxtoken.type == utf8_tt)
+            const TokenType utf8ct = UnicodeTrie::get().lookup(lctx->utf8c.codepoint);
+            if (lctx->ctxtoken.type == utf8ct)
             {
                 _slovorez_lexer_token_insert_utf8_char(&lctx->ctxtoken, &lctx->utf8c);
                 return false;

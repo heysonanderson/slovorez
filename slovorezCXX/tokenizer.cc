@@ -5,6 +5,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 
+#include "token.h"
 #include "lexer.h"
 
 namespace py = pybind11;
@@ -13,6 +14,7 @@ using namespace py::literals;
 constexpr size_t DEFAULT_BATCH_SIZE = 65536;
 constexpr size_t DEFAULT_TOKEN_MIN_LEN = 0;
 constexpr size_t DEFAULT_TOKEN_MAX_LEN = 512;
+constexpr uint64_t NO_FILTER_MASK = 0xFFFFFFFFFFFFFFFF;
 
 class FromTextTokenizer {
 private:
@@ -25,6 +27,7 @@ private:
     size_t batch_size = DEFAULT_BATCH_SIZE;
     size_t token_min_len = DEFAULT_TOKEN_MIN_LEN;
     size_t token_max_len = DEFAULT_TOKEN_MAX_LEN;
+    uint64_t filter_mask = NO_FILTER_MASK;
 
 public:
     FromTextTokenizer(const char* str, size_t str_len) : text_len(str_len), text_pos(0)
@@ -45,7 +48,7 @@ public:
 
     void set_filter(uint64_t filter_mask)
     {
-        this->lctx.filter_mask = filter_mask;
+        this->filter_mask = filter_mask;
     }
 
     void set_token_min_len(size_t token_min_len)
@@ -67,8 +70,9 @@ public:
             if (slovorez_lexer_token_get(&this->lctx, (unsigned char)this->raw_text[this->text_pos++]))
             {
                 const Token& token = this->lctx.rtoken;
+                const bool allowed_type = slovorez_token_filter_match(token.type, this->filter_mask);
                 const bool allowed_size = this->token_min_len <= token.size && token.size <= this->token_max_len;
-                if (allowed_size)
+                if (allowed_type && allowed_size)
                 {
                     for (int i = 0; i < token.size; ++i)
                     {
@@ -124,6 +128,7 @@ private:
     size_t batch_size = DEFAULT_BATCH_SIZE;
     size_t token_min_len = DEFAULT_TOKEN_MIN_LEN;
     size_t token_max_len = DEFAULT_TOKEN_MAX_LEN;
+    uint64_t filter_mask = NO_FILTER_MASK;
 
 public:
     FromFileTokenizer(const std::string& fpath)
@@ -143,7 +148,7 @@ public:
 
     void set_filter(uint64_t filter_mask)
     {
-        this->lctx.filter_mask = filter_mask;
+        this->filter_mask = filter_mask;
     }
 
     void set_token_min_len(size_t token_min_len)
@@ -175,8 +180,9 @@ public:
             if (slovorez_lexer_token_get(&this->lctx, (unsigned char)c))
             {
                 const Token& token = this->lctx.rtoken;
+                const bool allowed_type = slovorez_token_filter_match(token.type, this->filter_mask);
                 const bool allowed_size = this->token_min_len <= token.size && token.size <= this->token_max_len;
-                if (allowed_size)
+                if (allowed_type && allowed_size)
                 {
                     for (int i = 0; i < token.size; ++i)
                     {

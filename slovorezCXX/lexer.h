@@ -11,7 +11,6 @@
 #include "token.h"
 
 typedef struct {
-    uint64_t filter_mask;
     Token rtoken;
     Token ctxtoken;
     UTF8Char utf8c;

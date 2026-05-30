@@ -7,12 +7,8 @@ static inline void _slovorez_lexer_token_insert_utf8_char(Token* token, UTF8Char
 
 static inline void _slovorez_lexer_new_token(LexerContext* lctx)
 {
-    const TokenType tt = UnicodeTrie::get().lookup(lctx->utf8c.codepoint);
-    if (slovorez_token_filter_match(tt, lctx->filter_mask))
-    {
-        lctx->ctxtoken.type = tt;
-        _slovorez_lexer_token_insert_utf8_char(&lctx->ctxtoken, &lctx->utf8c);
-    }
+    lctx->ctxtoken.type = UnicodeTrie::get().lookup(lctx->utf8c.codepoint);
+    _slovorez_lexer_token_insert_utf8_char(&lctx->ctxtoken, &lctx->utf8c);
 }
 
 static inline void _slovorez_lexer_token_finalize(LexerContext* lctx)
@@ -61,7 +57,6 @@ void slovorez_lexer_init(LexerContext* lctx)
 {
     memset(&lctx->rtoken, 0, sizeof(Token));
     memset(&lctx->ctxtoken, 0, sizeof(Token));
-    lctx->filter_mask = 0xFFFFFFFFFFFFFFFF;
 }
 
 bool slovorez_lexer_token_get(LexerContext* lctx, unsigned char c)

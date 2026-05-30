@@ -16,84 +16,103 @@ constexpr size_t DEFAULT_TOKEN_MIN_LEN = 0;
 constexpr size_t DEFAULT_TOKEN_MAX_LEN = 512;
 constexpr uint64_t NO_FILTER_MASK = 0xFFFFFFFFFFFFFFFF;
 
+typedef struct {
+    char* str = nullptr;
+    TokenType* types = nullptr;
+    size_t str_size;
+    size_t token_idx;
+} TokenizerBatchBuffer;
+
+typedef struct {
+    size_t batch_size = DEFAULT_BATCH_SIZE;
+    size_t token_min_len = DEFAULT_TOKEN_MIN_LEN;
+    size_t token_max_len = DEFAULT_TOKEN_MAX_LEN;
+    uint64_t filter_mask = NO_FILTER_MASK;
+} TokenizerConfig;
+
 class FromTextTokenizer {
 private:
     TokenizerContext tctx;
     char* raw_text = nullptr;
     size_t text_len = 0;
     size_t text_pos = 0;
-    char* batch_str_buf = nullptr;
-    TokenType* batch_types_buf = nullptr;
-    size_t batch_size = DEFAULT_BATCH_SIZE;
-    size_t token_min_len = DEFAULT_TOKEN_MIN_LEN;
-    size_t token_max_len = DEFAULT_TOKEN_MAX_LEN;
-    uint64_t filter_mask = NO_FILTER_MASK;
+    TokenizerBatchBuffer batch_buffer;
+    TokenizerConfig config;
+
+    inline void _push_token_to_batch(const Token& token)
+    {
+        const bool allowed_type = slovorez_token_filter_match(token.type, this->config.filter_mask);
+        const bool allowed_size = this->config.token_min_len <= token.size && token.size <= this->config.token_max_len;
+        if (allowed_type && allowed_size)
+        {
+            for (int i = 0; i < token.size; ++i)
+            {
+                memcpy(this->batch_buffer.str + this->batch_buffer.str_size, token.data[i].bytes, token.data[i].size);
+                this->batch_buffer.str_size += token.data[i].size;
+            }
+            this->batch_buffer.str[this->batch_buffer.str_size++] = '\0';
+            this->batch_buffer.types[this->batch_buffer.token_idx++] = token.type;
+        }
+    }
 
 public:
     FromTextTokenizer(const char* str, size_t str_len) : text_len(str_len), text_pos(0)
     {
         this->raw_text = (char*)malloc(str_len);
-        this->batch_str_buf = (char*)malloc((512 * this->batch_size + this->batch_size) * sizeof(char));
-        this->batch_types_buf = (TokenType*)malloc(this->batch_size * sizeof(TokenType));
         memcpy(this->raw_text, str, str_len);
+        this->batch_buffer.str = (char*)malloc((512 * this->config.batch_size + this->config.batch_size) * sizeof(char));
+        this->batch_buffer.types = (TokenType*)malloc(this->config.batch_size * sizeof(TokenType));
         slovorez_tokenizer_init(&this->tctx);
     }
 
     void set_batch_size(size_t batch_size)
     {
-        this->batch_size = batch_size;
-        this->batch_str_buf = (char*)realloc(this->batch_str_buf, (512 * this->batch_size + this->batch_size) * sizeof(char));
-        this->batch_types_buf = (TokenType*)realloc(this->batch_types_buf, this->batch_size * sizeof(TokenType));
+        this->config.batch_size = batch_size;
+        this->batch_buffer.str = (char*)realloc(this->batch_buffer.str, (512 * this->config.batch_size + this->config.batch_size) * sizeof(char));
+        this->batch_buffer.types = (TokenType*)realloc(this->batch_buffer.types, this->config.batch_size * sizeof(TokenType));
     }
 
     void set_filter(uint64_t filter_mask)
     {
-        this->filter_mask = filter_mask;
+        this->config.filter_mask = filter_mask;
     }
 
     void set_token_min_len(size_t token_min_len)
     {
-        this->token_min_len = token_min_len;
+        this->config.token_min_len = token_min_len;
     }
 
     void set_token_max_len(size_t token_max_len)
     {
-        this->token_max_len = token_max_len;
+        this->config.token_max_len = token_max_len;
     }
 
     py::dict get_batch()
     {
-        size_t batch_str_size = 0;
-        size_t batch_token_idx = 0;
-        while (this->text_pos <= this->text_len && batch_token_idx <= this->batch_size)
+        this->batch_buffer.str_size = 0;
+        this->batch_buffer.token_idx = 0;
+        while (this->text_pos <= this->text_len && this->batch_buffer.token_idx <= this->config.batch_size)
         {
             if (slovorez_tokenizer_token_get(&this->tctx, (unsigned char)this->raw_text[this->text_pos++]))
             {
-                const Token& token = this->tctx.rtoken;
-                const bool allowed_type = slovorez_token_filter_match(token.type, this->filter_mask);
-                const bool allowed_size = this->token_min_len <= token.size && token.size <= this->token_max_len;
-                if (allowed_type && allowed_size)
-                {
-                    for (int i = 0; i < token.size; ++i)
-                    {
-                        memcpy(this->batch_str_buf + batch_str_size, token.data[i].bytes, token.data[i].size);
-                        batch_str_size += token.data[i].size;
-                    }
-                    this->batch_str_buf[batch_str_size++] = '\0';
-                    this->batch_types_buf[batch_token_idx++] = token.type;
-                }
+                this->_push_token_to_batch(this->tctx.rtoken);
             }
         }
-        if (batch_token_idx == 0)
+        if (this->text_pos >= this->text_len && this->batch_buffer.token_idx < this->config.batch_size && slovorez_tokenizer_end(&this->tctx))
+        {
+            this->_push_token_to_batch(this->tctx.rtoken);
+        }
+
+        if (this->batch_buffer.token_idx == 0)
         {
             return py::dict();
         }
         py::dict outbuf;
-        outbuf["text"_s] = py::str(this->batch_str_buf, batch_str_size);
+        outbuf["text"_s] = py::str(this->batch_buffer.str, this->batch_buffer.str_size);
         outbuf["types"_s] = py::array_t<uint64_t>(
-            { (size_t)batch_token_idx },
+            { this->batch_buffer.token_idx },
             { sizeof(uint64_t) },
-            reinterpret_cast<uint64_t*>(this->batch_types_buf),
+            reinterpret_cast<uint64_t*>(this->batch_buffer.types),
             py::cast(this)
         );
         return outbuf;
@@ -106,15 +125,15 @@ public:
             free(this->raw_text);
             this->raw_text = nullptr;
         }
-        if (this->batch_str_buf != nullptr)
+        if (this->batch_buffer.str != nullptr)
         {
-            free(this->batch_str_buf);
-            this->batch_str_buf = nullptr;
+            free(this->batch_buffer.str);
+            this->batch_buffer.str = nullptr;
         }
-        if (this->batch_types_buf != nullptr)
+        if (this->batch_buffer.types != nullptr)
         {
-            free(this->batch_types_buf);
-            this->batch_types_buf = nullptr;
+            free(this->batch_buffer.types);
+            this->batch_buffer.types = nullptr;
         }
     }
 };
@@ -123,42 +142,54 @@ class FromFileTokenizer {
 private:
     TokenizerContext tctx;
     FILE* f = nullptr;
-    char* batch_str_buf = nullptr;
-    TokenType* batch_types_buf = nullptr;
-    size_t batch_size = DEFAULT_BATCH_SIZE;
-    size_t token_min_len = DEFAULT_TOKEN_MIN_LEN;
-    size_t token_max_len = DEFAULT_TOKEN_MAX_LEN;
-    uint64_t filter_mask = NO_FILTER_MASK;
+    TokenizerBatchBuffer batch_buffer;
+    TokenizerConfig config;
+
+    inline void _push_token_to_batch(const Token& token)
+    {
+        const bool allowed_type = slovorez_token_filter_match(token.type, this->config.filter_mask);
+        const bool allowed_size = this->config.token_min_len <= token.size && token.size <= this->config.token_max_len;
+        if (allowed_type && allowed_size)
+        {
+            for (int i = 0; i < token.size; ++i)
+            {
+                memcpy(this->batch_buffer.str + this->batch_buffer.str_size, token.data[i].bytes, token.data[i].size);
+                this->batch_buffer.str_size += token.data[i].size;
+            }
+            this->batch_buffer.str[this->batch_buffer.str_size++] = '\0';
+            this->batch_buffer.types[this->batch_buffer.token_idx++] = token.type;
+        }
+    }
 
 public:
     FromFileTokenizer(const std::string& fpath)
     {
         this->f = fopen(fpath.c_str(), "r");
-        this->batch_str_buf = (char*)malloc((512 * this->batch_size + this->batch_size) * sizeof(char));
-        this->batch_types_buf = (TokenType*)malloc(this->batch_size * sizeof(TokenType));
+        this->batch_buffer.str = (char*)malloc((512 * this->config.batch_size + this->config.batch_size) * sizeof(char));
+        this->batch_buffer.types = (TokenType*)malloc(this->config.batch_size * sizeof(TokenType));
         slovorez_tokenizer_init(&this->tctx);
     }
 
     void set_batch_size(size_t batch_size)
     {
-        this->batch_size = batch_size;
-        this->batch_str_buf = (char*)realloc(this->batch_str_buf, (512 * this->batch_size + this->batch_size) * sizeof(char));
-        this->batch_types_buf = (TokenType*)realloc(this->batch_types_buf, this->batch_size * sizeof(TokenType));
+        this->config.batch_size = batch_size;
+        this->batch_buffer.str = (char*)realloc(this->batch_buffer.str, (512 * this->config.batch_size + this->config.batch_size) * sizeof(char));
+        this->batch_buffer.types = (TokenType*)realloc(this->batch_buffer.types, this->config.batch_size * sizeof(TokenType));
     }
 
     void set_filter(uint64_t filter_mask)
     {
-        this->filter_mask = filter_mask;
+        this->config.filter_mask = filter_mask;
     }
 
     void set_token_min_len(size_t token_min_len)
     {
-        this->token_min_len = token_min_len;
+        this->config.token_min_len = token_min_len;
     }
 
     void set_token_max_len(size_t token_max_len)
     {
-        this->token_max_len = token_max_len;
+        this->config.token_max_len = token_max_len;
     }
 
     bool is_fopen()
@@ -168,60 +199,35 @@ public:
 
     py::dict get_batch()
     {
+        this->batch_buffer.str_size = 0;
+        this->batch_buffer.token_idx = 0;
         if (this->f == nullptr)
         {
             return py::dict();
         }
-        size_t batch_str_size = 0;
-        size_t batch_token_idx = 0;
         int c;
-        while ((c = fgetc(this->f)) != EOF && batch_token_idx < this->batch_size)
+        while ((c = fgetc(this->f)) != EOF && this->batch_buffer.token_idx < this->config.batch_size)
         {
             if (slovorez_tokenizer_token_get(&this->tctx, (unsigned char)c))
             {
-                const Token& token = this->tctx.rtoken;
-                const bool allowed_type = slovorez_token_filter_match(token.type, this->filter_mask);
-                const bool allowed_size = this->token_min_len <= token.size && token.size <= this->token_max_len;
-                if (allowed_type && allowed_size)
-                {
-                    for (int i = 0; i < token.size; ++i)
-                    {
-                        memcpy(this->batch_str_buf + batch_str_size, token.data[i].bytes, token.data[i].size);
-                        batch_str_size += token.data[i].size;
-                    }
-                    this->batch_str_buf[batch_str_size++] = '\0';
-                    this->batch_types_buf[batch_token_idx++] = token.type;
-                }
+                this->_push_token_to_batch(this->tctx.rtoken);
             }
         }
-
-        if (c == EOF && batch_token_idx < this->batch_size && slovorez_tokenizer_end(&this->tctx))
+        if (c == EOF && this->batch_buffer.token_idx < this->config.batch_size && slovorez_tokenizer_end(&this->tctx))
         {
-            const Token& token = this->tctx.rtoken;
-            const bool allowed_type = slovorez_token_filter_match(token.type, this->filter_mask);
-            const bool allowed_size = this->token_min_len <= token.size && token.size <= this->token_max_len;
-            if (allowed_type && allowed_size)
-            {
-                for (int i = 0; i < token.size; ++i)
-                {
-                    memcpy(this->batch_str_buf + batch_str_size, token.data[i].bytes, token.data[i].size);
-                    batch_str_size += token.data[i].size;
-                }
-                this->batch_str_buf[batch_str_size++] = '\0';
-                this->batch_types_buf[batch_token_idx++] = token.type;
-            }
+            this->_push_token_to_batch(this->tctx.rtoken);
         }
 
-        if (batch_token_idx == 0)
+        if (this->batch_buffer.token_idx == 0)
         {
             return py::dict();
         }
         py::dict outbuf;
-        outbuf["text"_s] = py::str(this->batch_str_buf, batch_str_size);
+        outbuf["text"_s] = py::str(this->batch_buffer.str, this->batch_buffer.str_size);
         outbuf["types"_s] = py::array_t<uint64_t>(
-            { (size_t)batch_token_idx },
+            { this->batch_buffer.token_idx },
             { sizeof(uint64_t) },
-            reinterpret_cast<uint64_t*>(this->batch_types_buf),
+            reinterpret_cast<uint64_t*>(this->batch_buffer.types),
             py::cast(this)
         );
         return outbuf;
@@ -233,15 +239,15 @@ public:
         {
             fclose(this->f);
         }
-        if (this->batch_str_buf != nullptr)
+        if (this->batch_buffer.str != nullptr)
         {
-            free(this->batch_str_buf);
-            this->batch_str_buf = nullptr;
+            free(this->batch_buffer.str);
+            this->batch_buffer.str = nullptr;
         }
-        if (this->batch_types_buf != nullptr)
+        if (this->batch_buffer.types != nullptr)
         {
-            free(this->batch_types_buf);
-            this->batch_types_buf = nullptr;
+            free(this->batch_buffer.types);
+            this->batch_buffer.types = nullptr;
         }
     }
 };

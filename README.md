@@ -54,10 +54,10 @@ brew install cmake python@3.12
 cd slovorez/
 
 # Create build directory
-mkdir build && cd build
+mkdir build
 
 # Configure and build
-cmake .. -DCMAKE_BUILD_TYPE=Release && cmake --build .
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
 
 ```
 
@@ -82,7 +82,7 @@ conda activate new_env
 #### Install dependedncies
 ```bash
 # Default (CPU) 
-pip install .
+pip install .[cpu]
 
 # CUDA (GPU)
 pip install .[gpu]

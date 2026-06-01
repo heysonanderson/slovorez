@@ -4,49 +4,30 @@ import json
 import logging
 from pathlib import Path
 from typing import Union
+from slovorez.io.loaders import load_json
+from slovorez.utils import resolve_model_dir, resolve_path, MODEL_CONFIG_NAME
+
+_DEFAULT_MAX_TOKEN_LEN = 64
+_DEFAULT_MIN_TOKEN_LEN = 4
 
 logger = logging.getLogger(__name__)
 
-_FLUSH_SIZE = 8192
-
-# ---------------------------------------------------------------------------
-# Confidence threshold for automatic promotion to validated dict
-# ---------------------------------------------------------------------------
-
-_VALIDATED_CONFIDENCE_THRESHOLD = 0.85
-
+_FLUSH_SIZE = 65536
 
 # ===========================================================================
-# PersistenceIndex
+# SeenIndex
 # ===========================================================================
 
-class PersistenceIndex:
-    """Tracks which words have already been processed, across sessions.
-
-    The seen-set is the single source of truth for deduplication. It is built
-    at startup by scanning the JSONL log file (words only -- morphemes are not
-    loaded). New words are registered via ``mark_seen()``.
-
-    This class is intentionally lightweight so it can be serialized to a
-    ``frozenset`` and passed to worker processes without carrying any heavy
-    state (morpheme data, file handles, etc.).
-
-    Owns no I/O -- writing is delegated to ``LogWriter``.
-
-    Args:
-        min_len: minimum word length accepted for inference.
-        max_len: maximum word length accepted for inference.
-
-    Example::
-
-        index = PersistenceIndex.from_jsonl("predictions.jsonl")
-        snapshot = index.snapshot()           # frozenset -- safe to pickle
-        unseen = index.filter_unseen(words)
-        index.mark_seen(unseen)
+class SeenIndex:
+    """Tracks which words have already been processed.
+Args:
+    base_dict_path: path to base_dict.json (optional)
+    jsonl_path: path to words.jsonl from previous run (optional)
+               If None, only the base_dict is loaded.
     """
 
-    def __init__(self, min_len: int = 1, max_len: int = 64):
-        self._seen:  set[str] = set()
+    def __init__(self, min_len: int = 1, max_len: int = 64, base_dict_path: Union[str, Path] = None, jsonl_path: Union[str, Path] = None):
+        self._seen = self._init_seen(base_dict_path, jsonl_path)
         self.min_len = min_len
         self.max_len = max_len
 
@@ -55,59 +36,79 @@ class PersistenceIndex:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_jsonl(
+    def from_config(
         cls,
-        path: Union[str, Path],
-        min_len: int = 1,
-        max_len: int = 64,
-    ) -> PersistenceIndex:
+        config: dict
+    ) -> SeenIndex:
         """Build an index by scanning word keys from an existing JSONL file.
-
-        Only the ``"word"`` field is read per line -- morpheme data is ignored.
-        Malformed lines are skipped with a warning so a partially-written file
-        does not block startup.
-
-        Args:
-            path:    path to the JSONL log file (need not exist yet).
-            min_len: forwarded to the constructor.
-            max_len: forwarded to the constructor.
-
-        Returns:
-            A populated ``PersistenceIndex`` instance.
         """
-        index = cls(min_len=min_len, max_len=max_len)
-        p = Path(path)
+        resources = config.get("resources", {})
+        model_specs = config.get("model_specs")
+        model_name = model_specs.get("name")
+        model_dir = resolve_model_dir(model_name)
+    
 
-        if not p.is_file():
-            return index
+        default_output_name = resources.get("output")
+        base_dict_name = resources.get("base_dict")
+        model_base_dict_path = None
+        model_words_path = None
+        if base_dict_name:
+            model_base_dict_path = model_dir / base_dict_name
+        if default_output_name:
+            model_words_path = model_dir / default_output_name
 
-        loaded = skipped = 0
+        return cls(
+            min_len=model_specs.get("minlen", _DEFAULT_MIN_TOKEN_LEN), 
+            max_len=model_specs.get("maxlen", _DEFAULT_MAX_TOKEN_LEN),
+            base_dict_path=model_base_dict_path,
+            jsonl_path=model_words_path
+        )
 
-        with open(p, "r", encoding="utf-8") as f:
+    def _init_seen(self, base_dict_path, model_words_path):
+        jsonl_keys = self._load_jsonl_keys(model_words_path) if model_words_path else set()
+        dict_keys = self._load_dict_keys(base_dict_path) if base_dict_path else set()
+        return jsonl_keys | dict_keys
+
+    def _load_dict_keys(self, json_path):
+        keys = set()
+        bp = Path(json_path)
+        if not bp.is_file():
+            return keys
+        base_dict = load_json(bp)
+        dict_loaded = len(base_dict)
+        keys.update(base_dict.keys())
+        logger.info(f"SeenIndex: loaded {dict_loaded:,} keys from {bp.name}")
+        return keys
+
+    def _load_jsonl_keys(self, json_path):
+        jsonl_loaded = skipped = 0
+        keys = set()
+        jp = Path(json_path)
+        if not jp.is_file():
+            return keys
+        with open(jp, "r", encoding="utf-8") as f:
             for lineno, line in enumerate(f, start=1):
                 line = line.strip()
                 if not line:
                     continue
                 try:
-                    index._seen.add(json.loads(line)["word"])
-                    loaded += 1
+                    keys.add(json.loads(line)["word"])
+                    jsonl_loaded += 1
                 except (json.JSONDecodeError, KeyError):
                     logger.warning(
-                        f"Skipping malformed line {lineno} in {p.name}"
+                        f"Skipping malformed line {lineno} in {jp.name}"
                     )
                     skipped += 1
-
         logger.info(
-            f"PersistenceIndex: loaded {loaded:,} keys from {p.name}"
+            f"SeenIndex: loaded {jsonl_loaded:,} keys from {jp.name}"
             + (f" ({skipped} lines skipped)" if skipped else "")
         )
-        return index
-
+        return keys
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def filter_unseen(self, words: list[str]) -> list[str]:
+    def filter_unseen(self, words: set[str]) -> list[str]:
         """Return words not yet seen, deduped and sorted by length.
 
         Length filtering is applied here. Words from external lists (e.g.
@@ -119,11 +120,8 @@ class PersistenceIndex:
         Returns:
             Sorted list of new unique words ready for inference.
         """
-        seen    = self._seen
-        min_len = self.min_len
-        max_len = self.max_len
-        unseen  = {w for w in words if min_len <= len(w) <= max_len and w not in seen}
-        return sorted(unseen, key=len)
+        unseen = words - self._seen
+        return sorted(list(unseen), key=len)
 
     def mark_seen(self, words: list[str]) -> None:
         """Register words as seen so they are excluded from future batches.
@@ -141,18 +139,6 @@ class PersistenceIndex:
         """
         return frozenset(self._seen)
 
-    def reload_from_jsonl(self, path: Union[str, Path]) -> None:
-        """Rescan the JSONL file and merge any new keys into the seen-set.
-
-        Intended to be called after a multiprocessing run completes, so the
-        main-process index reflects results written by worker processes.
-
-        Args:
-            path: path to the JSONL log file.
-        """
-        fresh = PersistenceIndex.from_jsonl(path, self.min_len, self.max_len)
-        self._seen.update(fresh._seen)
-
     def __len__(self) -> int:
         return len(self._seen)
 
@@ -167,7 +153,7 @@ class LogWriter:
     Accumulates result dicts in memory and flushes to disk either when the
     buffer reaches ``_FLUSH_SIZE`` or when ``flush()`` is called explicitly.
 
-    Owns no deduplication logic -- that is ``PersistenceIndex``'s job.
+    Owns no deduplication logic -- that is ``SeenIndex``'s job.
     Owns no morpheme lookup -- that is ``MorphemeRegistry``'s job.
 
     Args:
@@ -176,7 +162,7 @@ class LogWriter:
 
     Example::
 
-        writer = LogWriter("predictions.jsonl")
+        writer = LogWriter("words.jsonl")
         writer.write(results)   # buffered
         writer.flush()          # ensure everything is on disk
     """
@@ -227,136 +213,3 @@ class LogWriter:
             raise
         finally:
             self._buffer.clear()
-
-
-# ===========================================================================
-# MorphemeRegistry
-# ===========================================================================
-
-class MorphemeRegistry:
-    """In-memory store for morpheme segmentation results.
-
-    Merges two sources of truth:
-
-    * **base_dict** -- a static, pre-validated dictionary loaded from JSON at
-      startup. Words in this dict are never sent to the model.
-    * **validated_dict** -- accumulated at runtime from model predictions whose
-      per-word confidence exceeds ``confidence_threshold``. High-confidence
-      results are promoted automatically.
-
-    Lookup returns morphemes for any word present in either dict. The registry
-    does *not* participate in deduplication (that is ``PersistenceIndex``'s
-    job) and does *not* write to disk (that is ``LogWriter``'s job).
-
-    This class is not meant to be used in worker processes -- it lives only in
-    the main process alongside the orchestrator.
-
-    Args:
-        confidence_threshold: minimum per-word confidence for automatic
-            promotion to ``validated_dict``. Defaults to 0.85.
-
-    Example::
-
-        registry = MorphemeRegistry.from_base_dict("base_dict.json")
-        registry.register(results)
-        morphemes = registry.lookup("башня")
-    """
-
-    def __init__(self, confidence_threshold: float = _VALIDATED_CONFIDENCE_THRESHOLD):
-        self.confidence_threshold = confidence_threshold
-        self._base_dict: dict[str, list[tuple]] = {}
-        self._validated_dict: dict[str, list[tuple]] = {}
-        self._base_dict_keys: frozenset[str] = frozenset()
-
-    # ------------------------------------------------------------------
-    # Construction
-    # ------------------------------------------------------------------
-
-    @classmethod
-    def from_base_dict(
-        cls,
-        path: Union[str, Path],
-        confidence_threshold: float = _VALIDATED_CONFIDENCE_THRESHOLD,
-    ) -> MorphemeRegistry:
-        """Load a static base dictionary from a JSON file.
-
-        The JSON file must be a flat object mapping word strings to their
-        pre-validated morpheme lists::
-
-            {"башня": [["баш", 3, 0.99], ["н", 4, 0.98], ["я", 5, 0.99]], ...}
-
-        Args:
-            path:                 path to the JSON base dictionary file.
-            confidence_threshold: forwarded to the constructor.
-
-        Returns:
-            A ``MorphemeRegistry`` instance with the base dict pre-loaded.
-        """
-        registry = cls(confidence_threshold=confidence_threshold)
-        p = Path(path)
-
-        with open(p, "r", encoding="utf-8") as f:
-            raw: dict = json.load(f)
-
-        registry._base_dict      = raw
-        registry._base_dict_keys = frozenset(raw)  # built exactly once
-
-        logger.info(
-            f"MorphemeRegistry: loaded {len(registry._base_dict):,} entries "
-            f"from {p.name}"
-        )
-        return registry
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
-    @property
-    def base_dict_keys(self) -> frozenset[str]:
-        """Immutable set of base dictionary word keys.
-
-        Use this to pre-filter word batches so base-dict words are never
-        sent to the model. The frozenset is built once at load time and
-        never reallocated.
-        """
-        return self._base_dict_keys
-
-    def lookup(self, word: str) -> list[tuple] | None:
-        """Return the morpheme list for a word from either dict, or None.
-
-        Checks ``validated_dict`` first (runtime results), then ``base_dict``
-        (static). Returns None if the word is absent from both.
-
-        Args:
-            word: lowercased word string.
-
-        Returns:
-            List of (morpheme_text, morpheme_type_id, confidence) tuples,
-            or None if not found.
-        """
-        return self._validated_dict.get(word) or self._base_dict.get(word)
-
-    def register(self, results: list[dict]) -> None:
-        """Ingest new model predictions and promote high-confidence ones.
-
-        A result is promoted to ``validated_dict`` when its ``"confidence"``
-        field is >= ``self.confidence_threshold``.
-
-        Args:
-            results: list of prediction dicts with at least ``"word"``,
-                     ``"morphemes"``, and ``"confidence"`` keys.
-        """
-        threshold = self.confidence_threshold
-        validated = self._validated_dict
-
-        for r in results:
-            if r.get("confidence", 0.0) >= threshold:
-                validated[r["word"]] = r["morphemes"]
-
-    def __contains__(self, word: str) -> bool:
-        """Return True if the word is in either the base or validated dict."""
-        return word in self._base_dict or word in self._validated_dict
-
-    def __len__(self) -> int:
-        """Total number of entries across both dicts (base + validated)."""
-        return len(self._base_dict) + len(self._validated_dict)

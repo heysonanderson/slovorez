@@ -26,10 +26,12 @@ def resolve_path(path: Union[str, Path]) -> Path:
 def resolve_model_dir(model_name_or_path: Union[str, Path]) -> Path:
     """Resolve a model directory from a name or path.
 
-    Accepts three forms:
-      - absolute path to a directory
-      - relative path / name (e.g. "slovorez-v1") -> resolved via resolve_path,
-        same two-step lookup (cwd first, then PROJECT_ROOT)
+    Resolution order for a bare name like "slovorez-test":
+      1. Absolute path -- used as-is.
+      2. Relative to cwd (e.g. ``./slovorez-test``).
+      3. Relative to cwd/models/ (e.g. ``./models/slovorez-test``).
+      4. Relative to PROJECT_ROOT.
+      5. Relative to PROJECT_ROOT/models/.
 
     Returns the resolved directory Path. Raises FileNotFoundError if the
     directory does not exist or config.json is missing inside it.
@@ -37,23 +39,28 @@ def resolve_model_dir(model_name_or_path: Union[str, Path]) -> Path:
     Example::
 
         model_dir = resolve_model_dir("slovorez-test")
-        # -> PROJECT_ROOT / "models" / "slovorez-test"  (if that exists)
+        # Tries cwd/slovorez-test, cwd/models/slovorez-test,
+        # PROJECT_ROOT/slovorez-test, PROJECT_ROOT/models/slovorez-test
     """
-    candidate = resolve_path(model_name_or_path)
+    p = Path(model_name_or_path)
 
-    if not candidate.is_dir():
-        raise FileNotFoundError(
-            f"Model directory not found: '{model_name_or_path}'. "
-            f"Resolved to: {candidate}"
-        )
+    candidates = [p] if p.is_absolute() else [
+        Path.cwd() / p,
+        Path.cwd() / "models" / p,
+        PROJECT_ROOT / p,
+        PROJECT_ROOT / "models" / p,
+    ]
 
-    config_file = candidate / MODEL_CONFIG_NAME
-    if not config_file.is_file():
-        raise FileNotFoundError(
-            f"'{MODEL_CONFIG_NAME}' not found inside model directory: {candidate}"
-        )
+    for candidate in candidates:
+        candidate = candidate.resolve()
+        if candidate.is_dir() and (candidate / MODEL_CONFIG_NAME).is_file():
+            return candidate
 
-    return candidate
+    raise FileNotFoundError(
+        f"Model directory not found: '{model_name_or_path}'. "
+        f"Searched in:\n"
+        + "\n".join(f"  - {c.resolve()}" for c in candidates)
+    )
 
 
 def file_exists(path: Union[str, Path]) -> bool:

@@ -7,11 +7,11 @@ logging.basicConfig(
 )
 
 def main():
-    model = Slovorez.from_pretrained("models/slovorez-test")
-    logging.info("Model and components are ready. Processing.")
-    model.process_file(
-        file_path="text.txt"
-    )
+    model = Slovorez.from_pretrained('models/slovorez-test')
+    logging.info('Model and components are ready. Processing.')
+    res = model.predict("Я сижу в своей комнате, в обиталище шума всей квартиры.")
+    for r in res:
+        print(r)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

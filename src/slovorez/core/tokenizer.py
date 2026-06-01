@@ -4,12 +4,14 @@ from typing import Union
 from slovorez.utils import resolve_path
 
 class BaseTokenizer:
-    def get_batch_tokens(self, tolower=False):
+    def get_batch_tokens(self, tolower: bool = True) -> list[str] | None:
         batch = self.get_batch()
+        if not batch:
+            return None
         text = batch["text"]
         if tolower:
             text = text.lower()
-        return batch.split('\0')[:-1]
+        return text.split('\0')[:-1]
 
 class FFTokenizer(slovorezCXX.FFSentencer, BaseTokenizer):
     def __init__(self, file_path: Union[str, Path], validated: bool=False):

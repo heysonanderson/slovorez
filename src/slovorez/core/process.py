@@ -8,8 +8,53 @@ from slovorez.core.vocab.morpheme import MORPHEME_TYPE_VOCAB
 
 
 # ---------------------------------------------------------------------------
+# BIES prefix codes (used instead of string comparison in the hot loop)
+# ---------------------------------------------------------------------------
+
+_B = 0
+_I = 1
+_E = 2
+_S = 3
+
+_PREFIX_MAP = {"B-": _B, "I-": _I, "E-": _E, "S-": _S}
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _build_tag_tables(
+    rev_bies_vocab: dict[int, str],
+    morpheme_type_vocab: dict[str, int],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Pre-compute tag_id -> prefix_code / morpheme_type_id as numpy arrays.
+
+    Replaces the dict-based LUT with two flat arrays that can be indexed
+    over an entire (batch, seq_len) tag_ids matrix in a single numpy gather,
+    eliminating 1.4M per-character dict lookups from the hot path.
+
+    Called once at tokenizer construction time.
+
+    Args:
+        rev_bies_vocab:       reverse BIES vocabulary, tag_id -> tag string.
+        morpheme_type_vocab:  morpheme type name -> int id mapping.
+
+    Returns:
+        prefix_table: int8 array of shape (max_tag_id + 1,),
+                      values are _B / _I / _E / _S codes.
+        mtype_table:  int16 array of shape (max_tag_id + 1,),
+                      values are morpheme type ids.
+    """
+    max_id = max(rev_bies_vocab) if rev_bies_vocab else 0
+    prefix_table = np.full(max_id + 1, _S, dtype=np.int8)
+    mtype_table  = np.zeros(max_id + 1, dtype=np.int16)
+
+    for tag_id, tag_str in rev_bies_vocab.items():
+        prefix_table[tag_id] = _PREFIX_MAP.get(tag_str[:2], _S)
+        mtype_table[tag_id]  = morpheme_type_vocab.get(tag_str[2:], 0)
+
+    return prefix_table, mtype_table
+
 
 def _pad_batch(tokenized_list: list[list[int]], maxlen: int = 64) -> np.ndarray:
     current_max = max(len(t) for t in tokenized_list)
@@ -23,64 +68,90 @@ def _pad_batch(tokenized_list: list[list[int]], maxlen: int = 64) -> np.ndarray:
 
 def _decode_word_bies(
     word: str,
-    tag_ids: np.ndarray,
-    confidences: np.ndarray,
-    rev_bies_vocab: dict[int, str],
-    morpheme_type_vocab: dict[str, int],
+    prefixes: list[int],
+    mtypes: list[int],
+    confs: list[float],
     repair: bool = True,
 ) -> tuple[list[tuple[str, int, float]], bool]:
-    segments = []
-    current_morpheme = ""
-    current_type = -1
-    current_confs = []
+    """Decode pre-resolved BIES tags for a single word into morpheme segments.
+
+    Compared to the previous version this function no longer performs any
+    dict lookups: ``prefixes`` and ``mtypes`` are plain Python lists that
+    were produced upstream by indexing numpy tables over the full batch
+    (one vectorised gather instead of one dict.get per character).
+
+    Morpheme text is sliced from the original word string using ``start_idx``
+    / ``i`` offsets -- no intermediate char list or ``"".join()`` allocation.
+    Confidence is accumulated as a running sum and divided once at segment
+    close, avoiding a separate list.
+
+    Args:
+        word:     original word string.
+        prefixes: per-character BIES prefix codes (_B/_I/_E/_S), length >= len(word).
+        mtypes:   per-character morpheme type ids, same length as prefixes.
+        confs:    per-character confidence scores, same length as prefixes.
+        repair:   if True, handle malformed BIES sequences gracefully.
+
+    Returns:
+        Tuple of (segments, has_errors) where segments is a list of
+        (morpheme_text, morpheme_type_id, confidence) tuples.
+    """
+    segments: list[tuple[str, int, float]] = []
     has_errors = False
 
-    word_len = len(word)
-    active_tags  = tag_ids[:word_len]
-    active_confs = confidences[:word_len]
+    start_idx        = 0
+    current_type     = -1
+    current_conf_sum = 0.0
+    current_len      = 0
 
-    for i, (char, tag_id) in enumerate(zip(word, active_tags)):
-        tag        = rev_bies_vocab.get(tag_id, "S-ROOT")
-        prefix     = tag[:2]
-        m_type_str = tag[2:]
-        m_type_id  = morpheme_type_vocab.get(m_type_str, 0)
-        conf       = float(active_confs[i])
+    for i in range(len(word)):
+        prefix = prefixes[i]
+        conf   = confs[i]
 
-        if repair and prefix in ("E-", "I-") and not current_morpheme:
+        # --- repair: E/I without an open segment -> treat as singleton -------
+        if repair and (prefix == _E or prefix == _I) and current_len == 0:
             has_errors = True
-            segments.append((char, m_type_id, conf))
+            segments.append((word[i], mtypes[i], conf))
+            start_idx = i + 1
             continue
 
-        if prefix == "B-":
-            if current_morpheme:
+        if prefix == _B:
+            # Flush any open segment that was never closed (malformed).
+            if current_len > 0:
                 has_errors = True
-                segments.append((current_morpheme, current_type, float(np.mean(current_confs))))
-            current_morpheme = char
-            current_type     = m_type_id
-            current_confs    = [conf]
+                segments.append((word[start_idx:i], current_type, current_conf_sum / current_len))
+            start_idx        = i
+            current_type     = mtypes[i]
+            current_conf_sum = conf
+            current_len      = 1
 
-        elif prefix == "I-":
-            current_morpheme += char
-            current_confs.append(conf)
+        elif prefix == _I:
+            current_conf_sum += conf
+            current_len      += 1
 
-        elif prefix == "E-":
-            current_morpheme += char
-            current_confs.append(conf)
-            segments.append((current_morpheme, current_type, float(np.mean(current_confs))))
-            current_morpheme = ""
-            current_confs    = []
+        elif prefix == _E:
+            current_conf_sum += conf
+            current_len      += 1
+            segments.append((word[start_idx:i + 1], current_type, current_conf_sum / current_len))
+            start_idx        = i + 1
+            current_conf_sum = 0.0
+            current_len      = 0
 
-        elif prefix == "S-":
-            if current_morpheme:
+        else:  # _S
+            # Flush any unclosed segment before appending the singleton.
+            if current_len > 0:
                 has_errors = True
-                segments.append((current_morpheme, current_type, float(np.mean(current_confs))))
-                current_morpheme = ""
-            segments.append((char, m_type_id, conf))
+                segments.append((word[start_idx:i], current_type, current_conf_sum / current_len))
+            segments.append((word[i], mtypes[i], conf))
+            start_idx        = i + 1
+            current_conf_sum = 0.0
+            current_len      = 0
 
-    if current_morpheme:
+    # Flush trailing open segment (B..I without closing E).
+    if current_len > 0:
         if repair:
             has_errors = True
-        segments.append((current_morpheme, current_type, float(np.mean(current_confs))))
+        segments.append((word[start_idx:], current_type, current_conf_sum / current_len))
 
     return segments, has_errors
 
@@ -121,6 +192,10 @@ class SlovorezTokenizer:
 
         self._unk_id = char_vocab.get(UNK_TOKEN, UNK_ID)
         self._pad_id = char_vocab.get(PAD_TOKEN, PAD_ID)
+
+        self._prefix_table, self._mtype_table = _build_tag_tables(
+            self.rev_bies_vocab, MORPHEME_TYPE_VOCAB
+        )
 
     # ------------------------------------------------------------------
     # Construction
@@ -214,35 +289,66 @@ class SlovorezTokenizer:
         logits: np.ndarray,
         model_name: str,
         repair: bool = True,
-    ) -> Generator[dict, None, None]:
+    ) -> list[dict]:
         """Decode logits into rich result dicts, one per word.
 
-        Yields:
-            Dict with keys: word, morphemes, confidence, model, repaired, validated.
-        """
-        tag_ids   = np.argmax(logits, axis=-1)
-        max_confs = np.max(logits, axis=-1)
+        Optimisations vs. the previous version:
 
+        1. Tag -> (prefix, morpheme_type) lookup is vectorised: two numpy index
+           operations over the full (batch, seq_len) tag_ids matrix replace
+           one dict.get + tuple unpack per character in the hot loop.
+
+        2. Per-word confidence is computed in bulk with a length mask, replacing
+           a Python ``sum()`` slice + ``round()`` call per word.
+
+        Args:
+            words:      original word strings passed to encode_batch().
+            logits:     float array of shape (batch, seq_len, num_classes).
+            model_name: written into every result dict.
+            repair:     passed through to _decode_word_bies.
+
+        Returns:
+            List of dicts with keys: word, morphemes, confidence, model,
+            repaired, validated.
+        """
+        tag_ids   = np.argmax(logits, axis=-1)   # (batch, seq_len)
+        max_confs = np.max(logits, axis=-1)       # (batch, seq_len)
+
+        prefix_rows = self._prefix_table[tag_ids].tolist()   # list[list[int]]
+        mtype_rows  = self._mtype_table[tag_ids].tolist()    # list[list[int]]
+        conf_rows   = max_confs.tolist()                     # list[list[float]]
+
+        seq_len = max_confs.shape[1]
+        lengths = np.fromiter(
+            (len(w) for w in words), dtype=np.int64, count=len(words)
+        )
+        mask      = np.arange(seq_len)[None, :] < lengths[:, None]
+        sums      = (max_confs * mask).sum(axis=1)
+
+        word_confs = np.round(
+            np.divide(sums, np.where(lengths > 0, lengths, 1)), 4
+        )
+        word_confs = np.where(lengths > 0, word_confs, 0.0).tolist()
+
+        results: list[dict] = []
         for i, word in enumerate(words):
             segments, repaired = _decode_word_bies(
                 word,
-                tag_ids[i],
-                max_confs[i],
-                self.rev_bies_vocab,
-                MORPHEME_TYPE_VOCAB,
+                prefix_rows[i],
+                mtype_rows[i],
+                conf_rows[i],
                 repair=repair,
             )
-
-            word_conf = float(np.mean(max_confs[i, :len(word)]))
-
-            yield {
+            results.append({
                 "word":       word,
                 "morphemes":  segments,
-                "confidence": round(word_conf, 4),
+                "confidence": word_confs[i],
                 "model":      model_name,
                 "repaired":   repaired,
                 "validated":  False,
-            }
+            })
+
+        return results
 
     def decode_predictions(
         self,
@@ -266,11 +372,11 @@ class SlovorezTokenizer:
         tag_ids   = np.argmax(logits, axis=-1)
         max_confs = np.max(logits, axis=-1)
 
-        for word, word_tag_ids, word_confs in zip(words, tag_ids, max_confs):
-            yield _decode_word_bies(
-                list(word),
-                word_tag_ids,
-                word_confs,
-                self.rev_bies_vocab,
-                MORPHEME_TYPE_VOCAB,
-            )
+        prefix_rows = self._prefix_table[tag_ids].tolist()
+        mtype_rows  = self._mtype_table[tag_ids].tolist()
+        conf_rows   = max_confs.tolist()
+
+        for word, prefixes, mtypes, confs in zip(
+            words, prefix_rows, mtype_rows, conf_rows
+        ):
+            yield _decode_word_bies(word, prefixes, mtypes, confs)

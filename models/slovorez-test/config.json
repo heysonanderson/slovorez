@@ -1,7 +1,7 @@
 {
   "metadata": {
     "timestamp": "2026-03-30T03:48:14.580539",
-    "base_model": "resnet-4b-ef-2048-80-0.4-synth-fix"
+    "embedding_model": "resnet-4b-ef-2048-80-0.4-synth-fix"
   },
   "model_specs": {
     "pretrain_name": "resnet-4b-ef-2024-80-192-0.4-tikh-random",

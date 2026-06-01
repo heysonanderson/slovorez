@@ -17,3 +17,5 @@ env/
 large.txt
 .vscode
 *predictions.jsonl
+test.py
+models/dev/

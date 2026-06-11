@@ -16,7 +16,7 @@ English · [Русский](README.ru.md)
 ```python
 from slovorez import Slovorez
 
-model = Slovorez.from_pretrained("models/slovorez")
+model = Slovorez.from_pretrained("models/slovorez-test")
 model.predict("Приставки и суффиксы выделяются автоматически.")
 ```
 

@@ -7,6 +7,7 @@ from typing import Union
 from slovorez.core.engine import ModelResource
 from slovorez.core.process import SlovorezTokenizer
 from slovorez.core.cache import LogWriter, SeenIndex
+from slovorez.core.vocab import Morpheme, REV_MORPHEME_TYPE_VOCAB
 from slovorez.core.tokenizer import FFTokenizer, FTTokenizer
 from slovorez.io.loaders import load_json
 from slovorez.utils import resolve_model_dir, resolve_path, MODEL_CONFIG_NAME
@@ -185,11 +186,12 @@ class Slovorez:
 
         results: list[dict] = []
         for pred in all_predictions:
-            results.append({
-                "word":       pred["word"],
-                "morphemes":  pred["morphemes"],
-            })
- 
+            morphemes = [
+                Morpheme(text, REV_MORPHEME_TYPE_VOCAB[type_id], score)
+                for text, type_id, score in pred["morphemes"]
+            ]
+            results.append({"word": pred["word"], "morphemes": morphemes})
+
         return results
     
     # ------------------------------------------------------------------

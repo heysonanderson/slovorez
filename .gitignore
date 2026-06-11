@@ -2,6 +2,7 @@ build/
 *.so
 *.dylib
 *.pyd
+*.pdb
 *.dll
 *.exp
 *.lib

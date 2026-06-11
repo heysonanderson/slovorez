@@ -8,7 +8,7 @@
 
 constexpr size_t UNICODE_CAPACITY       = 0x110000;
 constexpr size_t TRIE_BLOCK_SIZE_POW2   = 6;
-constexpr size_t TRIE_BLOCK_SIZE        = std::pow(2, TRIE_BLOCK_SIZE_POW2);
+constexpr size_t TRIE_BLOCK_SIZE        = 1ULL << TRIE_BLOCK_SIZE_POW2;
 constexpr size_t TRIE_BLOCK_COUNT       = 256;
 constexpr size_t TRIE_TOTAL_BLOCKS      = UNICODE_CAPACITY >> TRIE_BLOCK_SIZE_POW2;
 

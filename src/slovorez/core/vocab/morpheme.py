@@ -1,6 +1,14 @@
 from enum import IntEnum
 from .base import PAD_ID, UNK_ID, PAD_TOKEN, UNK_TOKEN
+from typing import NamedTuple
 
+class Morpheme(NamedTuple):
+    text: str
+    type: str       # 'PREF' | 'ROOT' | 'SUFF' | 'END' | 'POSTFIX' | 'LINK' | 'HYPH'
+    score: float
+
+    def __repr__(self) -> str:
+        return f"Morpheme({self.text!r}, {self.type}, {self.score:.2f})"
 
 class MorphemeType(IntEnum):
     """Morpheme type IDs.

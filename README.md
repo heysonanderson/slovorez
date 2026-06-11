@@ -2,13 +2,6 @@
 
 English · [Русский](README.ru.md)
 
-> Neural morpheme segmentation for Russian
-
-<!-- badges after publishing:
-![PyPI](https://img.shields.io/pypi/v/slovorez)
-![License](https://img.shields.io/badge/license-MIT-blue)
--->
-
 **Slovorez** is a neural library for morpheme segmentation of the Russian language: it splits a word into prefix, root, suffix and ending. Inference runs on CPU via ONNX Runtime — no GPU and no heavy dependencies — while the lexer core is written in C++. A lightweight model (~0.69M parameters) makes it suitable for production and edge use.
 
 ## Features
@@ -35,7 +28,7 @@ model.predict("Приставки и суффиксы выделяются ав�
  {'word': 'автоматически', 'morphemes': [Morpheme('автомат', ROOT, 0.73), Morpheme('ическ', SUFF, 0.80), Morpheme('и', SUFF, 0.76)]}]
 ```
 
-Each morpheme is a `Morpheme(text, type, score)`. For example, `приставки` → **при**-**став**-**к**-**и** (prefix · root · suffix · ending).
+Each morpheme is a `Morpheme(text, type, score)`.
 
 Morpheme classes:
 
@@ -50,6 +43,20 @@ Morpheme classes:
 | HYPH | hyphen |
 
 You can pass text in any language — Slovorez extracts and segments only Russian words, preserving their order.
+
+## Quality
+
+Slovorez (Sq NoRoPE, ~0.69M parameters) on the Revised RuMorphsLemmas test set, under two splits:
+
+- **Random split** — word forms split randomly; test roots may also occur in training.
+- **Root split** — split by roots, so test roots are unseen in training (OOV) — the harder, generalization setting.
+
+| Split | Boundary F1 | Root F1 | Accuracy | Word Acc |
+|---|---|---|---|---|
+| Random | 95.95 | 91.77 | 95.22 | 80.51 |
+| Root (OOV) | 91.83 | 83.59 | 90.12 | 64.32 |
+
+*Boundary F1 — F1 over all morpheme boundaries; Root F1 — F1 over root boundaries; Accuracy — character-level; Word Acc — share of fully correct words.*
 
 ## Installation
 

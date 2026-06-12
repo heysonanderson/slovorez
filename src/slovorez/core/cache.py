@@ -38,20 +38,25 @@ Args:
     @classmethod
     def from_config(
         cls,
-        config: dict
-    ) -> SeenIndex:
+        config: dict,
+        model_dir_path: str | Path | None = None
+    ) -> "SeenIndex":
         """Build an index by scanning word keys from an existing JSONL file.
         """
         resources = config.get("resources", {})
-        model_specs = config.get("model_specs")
-        model_name = model_specs.get("name")
-        model_dir = resolve_model_dir(model_name)
-    
+        model_specs = config.get("model_specs", {})
 
+        if model_dir_path is not None:
+            model_dir = Path(model_dir_path)
+        else:
+            model_name = model_specs.get("name")
+            model_dir = resolve_model_dir(model_name)
+    
         default_output_name = resources.get("output")
         base_dict_name = resources.get("base_dict")
         model_base_dict_path = None
         model_words_path = None
+        
         if base_dict_name:
             model_base_dict_path = model_dir / base_dict_name
         if default_output_name:

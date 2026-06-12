@@ -124,7 +124,7 @@ class Slovorez:
         return cls(
             model      = ModelResource(str(model_path), device=device),
             tokenizer  = SlovorezTokenizer.from_config(config),
-            index      = SeenIndex.from_config(config),
+            index      = SeenIndex.from_config(config, model_dir_path=model_dir),
             writer     = LogWriter(resolved_output),
             model_name = model_name,
         )

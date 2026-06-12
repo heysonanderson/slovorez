@@ -108,6 +108,6 @@ bool slovorez_tokenizer_token_get(TokenizerContext* tctx, unsigned char c)
 
 bool slovorez_tokenizer_end(TokenizerContext* tctx)
 {
-    memset(&tctx->lctx, 0, sizeof(LexerContext));
+    slovorez_lexer_token_finalize(&tctx->lctx);
     return _slovorez_tokenizer_token_try_finalize(tctx);
 }

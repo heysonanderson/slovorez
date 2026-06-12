@@ -11,12 +11,6 @@ static inline void _slovorez_lexer_new_token(LexerContext* lctx)
     _slovorez_lexer_token_insert_utf8_char(&lctx->ctxtoken, &lctx->utf8c);
 }
 
-static inline void _slovorez_lexer_token_finalize(LexerContext* lctx)
-{
-    lctx->rtoken = lctx->ctxtoken;
-    memset(&lctx->ctxtoken, 0, sizeof(Token));
-}
-
 static bool _slovorez_lexer_token_try_finalize(LexerContext* lctx)
 {
     switch (lctx->ctxtoken.type)
@@ -36,7 +30,7 @@ static bool _slovorez_lexer_token_try_finalize(LexerContext* lctx)
                 _slovorez_lexer_token_insert_utf8_char(&lctx->ctxtoken, &lctx->utf8c);
                 return false;
             }
-            _slovorez_lexer_token_finalize(lctx);
+            slovorez_lexer_token_finalize(lctx);
             _slovorez_lexer_new_token(lctx);
             return true;
         }
@@ -45,7 +39,7 @@ static bool _slovorez_lexer_token_try_finalize(LexerContext* lctx)
         case TokenType::NWLINE:
         case TokenType::UNKNWN:
         {
-            _slovorez_lexer_token_finalize(lctx);
+            slovorez_lexer_token_finalize(lctx);
             _slovorez_lexer_new_token(lctx);
             return true;
         }
@@ -66,4 +60,10 @@ bool slovorez_lexer_token_get(LexerContext* lctx, unsigned char c)
         return false;
     }
     return _slovorez_lexer_token_try_finalize(lctx);
+}
+
+void slovorez_lexer_token_finalize(LexerContext* lctx)
+{
+    lctx->rtoken = lctx->ctxtoken;
+    memset(&lctx->ctxtoken, 0, sizeof(Token));
 }

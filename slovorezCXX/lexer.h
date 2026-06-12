@@ -18,5 +18,6 @@ typedef struct {
 
 void slovorez_lexer_init(LexerContext* lctx);
 bool slovorez_lexer_token_get(LexerContext* lctx, unsigned char c);
+void slovorez_lexer_token_finalize(LexerContext* lctx);
 
 #endif // SLOVOREZ_LEXER_H

@@ -223,14 +223,13 @@ class Slovorez:
         else:
             self._process_file_sequential(file_path, batch_size, model_batch, use_viterbi)
 
-    def _infer_and_persist(self, words) -> None:
+    def _infer_and_persist(self, words, use_viterbi) -> None:
         encoded = self._tokenizer.encode_batch(words)
         logits = self._model.predict(encoded)
         predictions = self._tokenizer.decode_predictions_detail(
-            words, logits, self._model_name
+            words, logits, self._model_name, use_viterbi=use_viterbi
         )
         self._writer.write(predictions)
-        self._index.mark_seen(words)
 
     def _process_file_sequential(
         self,
@@ -253,12 +252,12 @@ class Slovorez:
             pending.extend(unseen)
 
             while len(pending) >= model_batch:
-                self._infer_and_persist(pending[:model_batch], ude_viterbi=use_viterbi)
+                self._infer_and_persist(pending[:model_batch], use_viterbi=use_viterbi)
                 pending = pending[model_batch:]
             batch = tokenizer_cxx.get_batch_tokens()
 
         if pending:
-            self._infer_and_persist(pending)
+            self._infer_and_persist(pending, use_viterbi=use_viterbi)
 
         self._writer.flush()
         logger.info(f"File '{file_path}' successfully processed (sequential).")

@@ -133,7 +133,7 @@ class Slovorez:
     # Inference
     # ------------------------------------------------------------------
  
-    def predict(self, text: str, write_to_cache: bool = False) -> list[dict]:
+    def predict(self, text: str, write_to_cache: bool = False, use_viterbi: bool = False) -> list[dict]:
         """Segment Russian words in text into morphemes, preserving word order.
  
         Two-phase approach:
@@ -171,7 +171,7 @@ class Slovorez:
             encoded      = self._tokenizer.encode_batch(batch)
             logits       = self._model.predict(encoded)
             rich_results = self._tokenizer.decode_predictions_detail(
-                batch, logits, self._model_name
+                batch, logits, self._model_name, use_viterbi=use_viterbi
             )
 
             if write_to_cache:
@@ -205,6 +205,7 @@ class Slovorez:
         model_batch: int = _DEFAULT_MODEL_BATCH,
         max_workers: int = _DEFAULT_MAX_WORKERS,
         threaded_mode: bool = False,
+        use_viterbi=False
     ) -> None:
         """Process a text file and persist all morpheme predictions to disk.
 
@@ -218,9 +219,9 @@ class Slovorez:
                                   (recommended for Windows or small files).
         """
         if threaded_mode:
-            self._process_file_multithread(file_path, batch_size, model_batch, max_workers)
+            self._process_file_multithread(file_path, batch_size, model_batch, max_workers, use_viterbi)
         else:
-            self._process_file_sequential(file_path, batch_size, model_batch)
+            self._process_file_sequential(file_path, batch_size, model_batch, use_viterbi)
 
     def _infer_and_persist(self, words) -> None:
         encoded = self._tokenizer.encode_batch(words)
@@ -235,7 +236,8 @@ class Slovorez:
         self,
         file_path: Union[str, Path],
         batch_size: int = _DEFAULT_BATCH_SIZE,
-        model_batch: int = _DEFAULT_MODEL_BATCH
+        model_batch: int = _DEFAULT_MODEL_BATCH,
+        use_viterbi: bool = False
     ) -> None:
         tokenizer_cxx = FFTokenizer(file_path)
         tokenizer_cxx.set_batch_size(batch_size)
@@ -251,7 +253,7 @@ class Slovorez:
             pending.extend(unseen)
 
             while len(pending) >= model_batch:
-                self._infer_and_persist(pending[:model_batch])
+                self._infer_and_persist(pending[:model_batch], ude_viterbi=use_viterbi)
                 pending = pending[model_batch:]
             batch = tokenizer_cxx.get_batch_tokens()
 
@@ -267,6 +269,7 @@ class Slovorez:
         batch_size: int = _DEFAULT_BATCH_SIZE,
         model_batch: int = _DEFAULT_MODEL_BATCH,
         max_workers: int = _DEFAULT_MAX_WORKERS,
+        use_viterbi: bool = False
     ) -> None:
         import threading
 
@@ -278,7 +281,7 @@ class Slovorez:
         pipeline_threads = [
             threading.Thread(
                 target=self._pipeline_worker,
-                args=(chunk_queue, writer_queue, self._model, self._tokenizer, self._model_name),
+                args=(chunk_queue, writer_queue, self._model, self._tokenizer, self._model_name, use_viterbi),
                 daemon=True
             )
             for _ in range(max_workers)
@@ -328,7 +331,8 @@ class Slovorez:
             writer_queue: queue.Queue,
             model: ModelResource,
             tokenizer: SlovorezTokenizer,
-            model_name: str
+            model_name: str,
+            use_viterbi: bool
     ) -> None:
         while True:
             chunk = chunk_queue.get()
@@ -336,7 +340,7 @@ class Slovorez:
                 break
             encoded = tokenizer.encode_batch(chunk)
             logits = model.predict(encoded)
-            results = tokenizer.decode_predictions_detail(chunk, logits, model_name)
+            results = tokenizer.decode_predictions_detail(chunk, logits, model_name, use_viterbi=use_viterbi)
             writer_queue.put((results))
 
     @staticmethod

@@ -27,24 +27,6 @@ def _build_tag_tables(
     rev_bies_vocab: dict[int, str],
     morpheme_type_vocab: dict[str, int],
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Pre-compute tag_id -> prefix_code / morpheme_type_id as numpy arrays.
-
-    Replaces the dict-based LUT with two flat arrays that can be indexed
-    over an entire (batch, seq_len) tag_ids matrix in a single numpy gather,
-    eliminating 1.4M per-character dict lookups from the hot path.
-
-    Called once at tokenizer construction time.
-
-    Args:
-        rev_bies_vocab:       reverse BIES vocabulary, tag_id -> tag string.
-        morpheme_type_vocab:  morpheme type name -> int id mapping.
-
-    Returns:
-        prefix_table: int8 array of shape (max_tag_id + 1,),
-                      values are _B / _I / _E / _S codes.
-        mtype_table:  int16 array of shape (max_tag_id + 1,),
-                      values are morpheme type ids.
-    """
     max_id = max(rev_bies_vocab) if rev_bies_vocab else 0
     prefix_table = np.full(max_id + 1, _S, dtype=np.int8)
     mtype_table  = np.zeros(max_id + 1, dtype=np.int16)
@@ -54,6 +36,64 @@ def _build_tag_tables(
         mtype_table[tag_id]  = morpheme_type_vocab.get(tag_str[2:], 0)
 
     return prefix_table, mtype_table
+
+
+def _build_bies_constraints(
+    id2tag: dict[int, str], 
+    forbidden_ends: set[str] | None = None,
+    forbidden_starts: set[str] | None = None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Pre-compute valid BIES transitions and start/end masks."""
+    if forbidden_ends is None:
+        forbidden_ends = set(['PAD', 'PREF', 'LINK', 'HYPH'])
+    if forbidden_starts is None:
+        forbidden_starts = set(['END', 'SUFF', 'PAD', 'LINK', 'HYPH'])
+
+    C = max(id2tag) + 1 if id2tag else 0
+    def parse(tag):
+        if tag in ("<PAD>", "<UNK>"): return None, None
+        return (tag.split('-', 1) + ['', ''])[:2] if '-' in tag else ('S', tag)
+    
+    P = {i: parse(t) for i, t in id2tag.items()}
+    T = np.zeros((C, C), bool)
+    start_ok = np.zeros(C, bool)
+    end_ok = np.zeros(C, bool)
+    
+    for i, (p1, t1) in P.items():
+        if p1 is None: continue
+        
+
+        start_ok[i] = (p1 in ('B', 'S')) and (t1 not in forbidden_starts)
+        
+        end_ok[i] = (p1 in ('E', 'S')) and (t1 not in forbidden_ends)
+        
+        for j, (p2, t2) in P.items():
+            if p2 is None: continue
+            if p1 in ('B', 'I'): 
+                T[i, j] = p2 in ('I', 'E') and t2 == t1
+            else:                
+                T[i, j] = p2 in ('B', 'S')
+                
+    return T, start_ok, end_ok
+
+
+def _viterbi(logp: np.ndarray, trans: np.ndarray, start_ok: np.ndarray, end_ok: np.ndarray) -> np.ndarray:
+    """Viterbi decoding for a single unpadded word matrix."""
+    L, C = logp.shape
+    dp = np.full((L, C), -1e9, dtype=np.float32)
+    bp = np.zeros((L, C), np.int32)
+    
+    dp[0] = logp[0] + start_ok
+    for t in range(1, L):
+        s = dp[t-1][:, None] + trans
+        bp[t] = s.argmax(0)
+        dp[t] = logp[t] + s[bp[t], np.arange(C)]
+        
+    path = np.zeros(L, np.int32)
+    path[-1] = int((dp[-1] + end_ok).argmax())
+    for t in range(L-1, 0, -1): 
+        path[t-1] = bp[t, path[t]]
+    return path
 
 
 def _pad_batch(tokenized_list: list[list[int]], maxlen: int = 64) -> np.ndarray:
@@ -73,29 +113,6 @@ def _decode_word_bies(
     confs: list[float],
     repair: bool = True,
 ) -> tuple[list[tuple[str, int, float]], bool]:
-    """Decode pre-resolved BIES tags for a single word into morpheme segments.
-
-    Compared to the previous version this function no longer performs any
-    dict lookups: ``prefixes`` and ``mtypes`` are plain Python lists that
-    were produced upstream by indexing numpy tables over the full batch
-    (one vectorised gather instead of one dict.get per character).
-
-    Morpheme text is sliced from the original word string using ``start_idx``
-    / ``i`` offsets -- no intermediate char list or ``"".join()`` allocation.
-    Confidence is accumulated as a running sum and divided once at segment
-    close, avoiding a separate list.
-
-    Args:
-        word:     original word string.
-        prefixes: per-character BIES prefix codes (_B/_I/_E/_S), length >= len(word).
-        mtypes:   per-character morpheme type ids, same length as prefixes.
-        confs:    per-character confidence scores, same length as prefixes.
-        repair:   if True, handle malformed BIES sequences gracefully.
-
-    Returns:
-        Tuple of (segments, has_errors) where segments is a list of
-        (morpheme_text, morpheme_type_id, confidence) tuples.
-    """
     segments: list[tuple[str, int, float]] = []
     has_errors = False
 
@@ -108,7 +125,6 @@ def _decode_word_bies(
         prefix = prefixes[i]
         conf   = confs[i]
 
-        # --- repair: E/I without an open segment -> treat as singleton -------
         if repair and (prefix == _E or prefix == _I) and current_len == 0:
             has_errors = True
             segments.append((word[i], mtypes[i], conf))
@@ -116,7 +132,6 @@ def _decode_word_bies(
             continue
 
         if prefix == _B:
-            # Flush any open segment that was never closed (malformed).
             if current_len > 0:
                 has_errors = True
                 segments.append((word[start_idx:i], current_type, current_conf_sum / current_len))
@@ -138,7 +153,6 @@ def _decode_word_bies(
             current_len      = 0
 
         else:  # _S
-            # Flush any unclosed segment before appending the singleton.
             if current_len > 0:
                 has_errors = True
                 segments.append((word[start_idx:i], current_type, current_conf_sum / current_len))
@@ -147,7 +161,6 @@ def _decode_word_bies(
             current_conf_sum = 0.0
             current_len      = 0
 
-    # Flush trailing open segment (B..I without closing E).
     if current_len > 0:
         if repair:
             has_errors = True
@@ -161,19 +174,6 @@ def _decode_word_bies(
 # ---------------------------------------------------------------------------
 
 class SlovorezTokenizer:
-    """Encodes words to character-index tensors and decodes BIES model outputs.
-
-    Linguistic knowledge (char vocab, BIES tag vocab) is model-specific and
-    loaded from the model config JSON via ``from_config()``. Direct construction
-    is available for custom vocabs or testing.
-
-    Args:
-        char_vocab:  mapping char -> int. Loaded from config["mapping"]["tokenizer_vocab"].
-        bies_vocab:  mapping BIES-tag -> int. Loaded from config["mapping"]["label2id"].
-        maxlen:      maximum sequence length. Loaded from config["model_specs"]["maxlen"].
-        do_lower:    lowercase words before encoding. False is recommended --
-                     do lowercasing upstream before tokenization for best throughput.
-    """
 
     def __init__(
         self,
@@ -196,25 +196,15 @@ class SlovorezTokenizer:
         self._prefix_table, self._mtype_table = _build_tag_tables(
             self.rev_bies_vocab, MORPHEME_TYPE_VOCAB
         )
-
-    # ------------------------------------------------------------------
-    # Construction
-    # ------------------------------------------------------------------
+        
+        # Инициализация матриц ограничений Витерби
+        T, start_ok, end_ok = _build_bies_constraints(self.rev_bies_vocab)
+        self._trans = np.where(T, 0.0, -1e9).astype(np.float32)
+        self._start_ok_mask = np.where(start_ok, 0.0, -1e9).astype(np.float32)
+        self._end_ok_mask = np.where(end_ok, 0.0, -1e9).astype(np.float32)
 
     @classmethod
     def from_config(cls, config: dict) -> SlovorezTokenizer:
-        """Instantiate from a model config dict (loaded from JSON).
-
-        Expected keys:
-            config["mapping"]["tokenizer_vocab"],
-            config["mapping"]["label2id"],
-            config["model_specs"]["maxlen"].
-
-        Example::
-
-            config = load_json("models/slovorez-v1/config.json")
-            tokenizer = SlovorezTokenizer.from_config(config)
-        """
         mapping = config["mapping"]
         maxlen  = config["model_specs"]["maxlen"]
         return cls(
@@ -224,19 +214,6 @@ class SlovorezTokenizer:
         )
 
     def to_config(self) -> dict:
-        """Serialize the tokenizer state back to a config-compatible dict.
-
-        The returned dict is a valid argument to ``from_config()``, so a
-        round-trip is guaranteed::
-
-            tokenizer == SlovorezTokenizer.from_config(tokenizer.to_config())
-
-        Primary use: passing tokenizer state to worker processes without
-        exposing internal attributes directly.
-
-        Returns:
-            Minimal config dict with keys ``mapping`` and ``model_specs``.
-        """
         return {
             "mapping": {
                 "tokenizer_vocab": self.char_vocab,
@@ -247,16 +224,7 @@ class SlovorezTokenizer:
             },
         }
 
-    # ------------------------------------------------------------------
-    # Encoding
-    # ------------------------------------------------------------------
-
     def encode_batch(self, words: list[str]) -> np.ndarray:
-        """Encode a list of words into a padded int32 matrix of char indices.
-
-        Returns:
-            np.ndarray of shape (len(words), min(max_word_len, maxlen)), dtype=int32.
-        """
         get_char = self.char_vocab.get
         unk_id   = self._unk_id
         if self.do_lower:
@@ -264,19 +232,7 @@ class SlovorezTokenizer:
         char_tokenized = [[get_char(c, unk_id) for c in w] for w in words]
         return _pad_batch(char_tokenized, self.maxlen)
 
-    # ------------------------------------------------------------------
-    # Decoding
-    # ------------------------------------------------------------------
-
     def decode_batch(self, encoded: np.ndarray) -> list[str]:
-        """Decode a padded char-index matrix back to strings.
-
-        Args:
-            encoded: int array of shape (batch, seq_len).
-
-        Returns:
-            List of reconstructed word strings.
-        """
         get_char = self.rev_char_vocab.get
         return [
             "".join(get_char(idx, "") for idx in row if idx != self._pad_id)
@@ -289,94 +245,114 @@ class SlovorezTokenizer:
         logits: np.ndarray,
         model_name: str,
         repair: bool = True,
+        use_viterbi: bool = False
     ) -> list[dict]:
-        """Decode logits into rich result dicts, one per word.
+        """Decode logits into rich result dicts with optional Viterbi constraints."""
+        
+        if use_viterbi:
+            log_probs = np.log(np.clip(logits.astype(np.float32), 1e-9, 1.0))
+            results: list[dict] = []
+            
+            for i, word in enumerate(words):
+                L = len(word)
+                if L == 0:
+                    results.append({
+                        "word":       word,
+                        "morphemes":  [],
+                        "confidence": 0.0,
+                        "model":      model_name,
+                        "repaired":   False,
+                        "validated":  False,
+                    })
+                    continue
 
-        Optimisations vs. the previous version:
+                word_logp = log_probs[i, :L]
+                path = _viterbi(word_logp, self._trans, self._start_ok_mask, self._end_ok_mask)
+                
+                word_logits = logits[i, :L]
+                confs = word_logits[np.arange(L), path].tolist()
+                
+                prefixes = self._prefix_table[path].tolist()
+                mtypes    = self._mtype_table[path].tolist()
+                
+                segments, repaired = _decode_word_bies(word, prefixes, mtypes, confs, repair=repair)
+                mean_conf   = float(np.round(np.mean(confs), 4)) if confs else 0.0
 
-        1. Tag -> (prefix, morpheme_type) lookup is vectorised: two numpy index
-           operations over the full (batch, seq_len) tag_ids matrix replace
-           one dict.get + tuple unpack per character in the hot loop.
+                results.append({
+                    "word":       word,
+                    "morphemes":  segments,
+                    "confidence": mean_conf,
+                    "model":      model_name,
+                    "repaired":   repaired,
+                    "validated":  False,
+                })
+            return results
+            
+        else:
+            tag_ids   = np.argmax(logits, axis=-1)
+            max_confs = np.max(logits, axis=-1)
 
-        2. Per-word confidence is computed in bulk with a length mask, replacing
-           a Python ``sum()`` slice + ``round()`` call per word.
+            prefix_rows = self._prefix_table[tag_ids].tolist()
+            mtype_rows  = self._mtype_table[tag_ids].tolist()
+            conf_rows   = max_confs.tolist()
 
-        Args:
-            words:      original word strings passed to encode_batch().
-            logits:     float array of shape (batch, seq_len, num_classes).
-            model_name: written into every result dict.
-            repair:     passed through to _decode_word_bies.
+            seq_len = max_confs.shape[1]
+            lengths = np.fromiter((len(w) for w in words), dtype=np.int64, count=len(words))
+            mask      = np.arange(seq_len)[None, :] < lengths[:, None]
+            sums      = (max_confs * mask).sum(axis=1)
 
-        Returns:
-            List of dicts with keys: word, morphemes, confidence, model,
-            repaired, validated.
-        """
-        tag_ids   = np.argmax(logits, axis=-1)   # (batch, seq_len)
-        max_confs = np.max(logits, axis=-1)       # (batch, seq_len)
+            word_confs = np.round(np.divide(sums, np.where(lengths > 0, lengths, 1)), 4)
+            word_confs = np.where(lengths > 0, word_confs, 0.0).tolist()
 
-        prefix_rows = self._prefix_table[tag_ids].tolist()   # list[list[int]]
-        mtype_rows  = self._mtype_table[tag_ids].tolist()    # list[list[int]]
-        conf_rows   = max_confs.tolist()                     # list[list[float]]
-
-        seq_len = max_confs.shape[1]
-        lengths = np.fromiter(
-            (len(w) for w in words), dtype=np.int64, count=len(words)
-        )
-        mask      = np.arange(seq_len)[None, :] < lengths[:, None]
-        sums      = (max_confs * mask).sum(axis=1)
-
-        word_confs = np.round(
-            np.divide(sums, np.where(lengths > 0, lengths, 1)), 4
-        )
-        word_confs = np.where(lengths > 0, word_confs, 0.0).tolist()
-
-        results: list[dict] = []
-        for i, word in enumerate(words):
-            segments, repaired = _decode_word_bies(
-                word,
-                prefix_rows[i],
-                mtype_rows[i],
-                conf_rows[i],
-                repair=repair,
-            )
-            results.append({
-                "word":       word,
-                "morphemes":  segments,
-                "confidence": word_confs[i],
-                "model":      model_name,
-                "repaired":   repaired,
-                "validated":  False,
-            })
-
-        return results
+            results: list[dict] = []
+            for i, word in enumerate(words):
+                segments, repaired = _decode_word_bies(
+                    word, prefix_rows[i], mtype_rows[i], conf_rows[i], repair=repair
+                )
+                results.append({
+                    "word":       word,
+                    "morphemes":  segments,
+                    "confidence": word_confs[i],
+                    "model":      model_name,
+                    "repaired":   repaired,
+                    "validated":  False,
+                })
+            return results
 
     def decode_predictions(
         self,
         words: list[str],
         logits: np.ndarray,
-    ) -> Generator[list[tuple[str, int, float]], None, None]:
-        """Decode raw model logits into morpheme segments, word by word.
+        use_viterbi: bool = True,
+    ) -> Generator[tuple[list[tuple[str, int, float]], bool], None, None]:
+        """Decode raw model logits into morpheme segments word by word."""
+        
+        if use_viterbi:
+            log_probs = np.log(np.clip(logits.astype(np.float32), 1e-9, 1.0))
+            for i, word in enumerate(words):
+                L = len(word)
+                if L == 0:
+                    yield [], False
+                    continue
 
-        Args:
-            words:  original word strings -- the same list passed to encode_batch().
-                    Passed by reference, no copy is made.
-            logits: float array (batch, seq_len, num_classes) -- raw model output.
+                word_logp = log_probs[i, :L]
+                path = _viterbi(word_logp, self._trans, self._start_ok_mask, self._end_ok_mask)
+                
+                word_logits = logits[i, :L]
+                confs = word_logits[np.arange(L), path].tolist()
+                
+                prefixes = self._prefix_table[path].tolist()
+                mtypes    = self._mtype_table[path].tolist()
+                
+                yield _decode_word_bies(word, prefixes, mtypes, confs, repair=False)
+                
+        else:
+            tag_ids   = np.argmax(logits, axis=-1)
+            max_confs = np.max(logits, axis=-1)
 
-        Yields:
-            For each word: list of (morpheme_text, morpheme_type_id, confidence).
+            prefix_rows = self._prefix_table[tag_ids].tolist()
+            mtype_rows  = self._mtype_table[tag_ids].tolist()
+            conf_rows   = max_confs.tolist()
 
-        Example output for "башня"::
-
-            [("баш", 3, 0.91), ("н", 4, 0.76), ("я", 5, 0.88)]
-        """
-        tag_ids   = np.argmax(logits, axis=-1)
-        max_confs = np.max(logits, axis=-1)
-
-        prefix_rows = self._prefix_table[tag_ids].tolist()
-        mtype_rows  = self._mtype_table[tag_ids].tolist()
-        conf_rows   = max_confs.tolist()
-
-        for word, prefixes, mtypes, confs in zip(
-            words, prefix_rows, mtype_rows, conf_rows
-        ):
-            yield _decode_word_bies(word, prefixes, mtypes, confs)
+            for word, prefixes, mtypes, confs in zip(words, prefix_rows, mtype_rows, conf_rows):
+                yield _decode_word_bies(word, prefixes, mtypes, confs, repair=True)

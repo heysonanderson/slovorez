@@ -91,6 +91,12 @@ public:
     {
         this->batch_buffer.str_size = 0;
         this->batch_buffer.token_idx = 0;
+
+        if (this->text_pos >= this->text_len)
+        {
+            return py::dict();
+        }
+
         while (this->text_pos <= this->text_len && this->batch_buffer.token_idx <= this->config.batch_size)
         {
             if (slovorez_tokenizer_token_get(&this->tctx, (unsigned char)this->raw_text[this->text_pos++]))
@@ -101,6 +107,10 @@ public:
         if (this->text_pos >= this->text_len && this->batch_buffer.token_idx < this->config.batch_size && slovorez_tokenizer_end(&this->tctx))
         {
             this->_push_token_to_batch(this->tctx.rtoken);
+            if (slovorez_tokenizer_end(&this->tctx))
+            {
+                this->_push_token_to_batch(this->tctx.rtoken);
+            }
         }
 
         if (this->batch_buffer.token_idx == 0)
@@ -201,21 +211,28 @@ public:
     {
         this->batch_buffer.str_size = 0;
         this->batch_buffer.token_idx = 0;
-        if (this->f == nullptr)
+
+        int c;
+        if (this->f == nullptr || ((c = fgetc(this->f)) == EOF))
         {
             return py::dict();
         }
-        int c;
-        while ((c = fgetc(this->f)) != EOF && this->batch_buffer.token_idx < this->config.batch_size)
+
+        while (c != EOF && this->batch_buffer.token_idx < this->config.batch_size)
         {
             if (slovorez_tokenizer_token_get(&this->tctx, (unsigned char)c))
             {
                 this->_push_token_to_batch(this->tctx.rtoken);
             }
+            c = fgetc(this->f);
         }
         if (c == EOF && this->batch_buffer.token_idx < this->config.batch_size && slovorez_tokenizer_end(&this->tctx))
         {
             this->_push_token_to_batch(this->tctx.rtoken);
+            if (slovorez_tokenizer_end(&this->tctx))
+            {
+                this->_push_token_to_batch(this->tctx.rtoken);
+            }
         }
 
         if (this->batch_buffer.token_idx == 0)

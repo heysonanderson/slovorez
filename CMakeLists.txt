@@ -3,8 +3,6 @@ project(SlovorezCXX LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
-
 include(FetchContent)
 FetchContent_Declare(
   pybind11

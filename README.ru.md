@@ -60,72 +60,15 @@ Slovorez (Sq NoRoPE, ~0.69M параметров) на тестовой выбо
 
 ## Установка
 
-### Требования
-
-- CMake 3.15+
-- Компилятор с поддержкой C++11
-- Python 3.8+ с заголовочными файлами для разработки
-
-### Сборка из исходников
-
-Установи зависимости для сборки.
-
-**Ubuntu / Debian / Mint / Pop!\_OS**
-
-```bash
-sudo apt install g++ cmake python3-dev
-```
-
-**Fedora / Red Hat**
-
-```bash
-sudo dnf install gcc-c++ cmake python3-devel
-```
-
-**Arch / Manjaro / EndeavourOS**
-
-```bash
-sudo pacman -S base-devel cmake python
-```
-
-**macOS** (требуется Homebrew)
-
-```bash
-brew install cmake python@3.12
-```
-
-**Windows**
-
-1. **Компилятор C++** — Visual Studio с воркфлоу *Desktop development with C++* или MinGW-w64
-2. **CMake** — с cmake.org
-3. **Python** — с python.org. При установке отметь **«Add Python to PATH»** и убедись, что включены **development headers**.
-
-Сборка:
-
-```bash
-# Перейти в папку проекта
-cd slovorez/
-
-# Создать каталог сборки
-mkdir build
-
-# Конфигурация и сборка
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
-```
-
-В корне проекта появится файл общей библиотеки.
-
-### Установка Python-пакета
-
 ```bash
 cd slovorez/
 conda activate new_env
 
 # CPU
-pip install .[cpu]
+pip install -e .[cpu]
 
 # CUDA (GPU)
-pip install .[gpu]
+pip install -e .[gpu]
 ```
 
 Демо:

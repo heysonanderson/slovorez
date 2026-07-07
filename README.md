@@ -60,72 +60,15 @@ Slovorez (Sq NoRoPE, ~0.69M parameters) on the Revised RuMorphsLemmas test set, 
 
 ## Installation
 
-### Prerequisites
-
-- CMake 3.15+
-- A compiler with C++11 support
-- Python 3.8+ with development headers
-
-### Build from source
-
-Install the build dependencies.
-
-**Ubuntu / Debian / Mint / Pop!\_OS**
-
-```bash
-sudo apt install g++ cmake python3-dev
-```
-
-**Fedora / Red Hat**
-
-```bash
-sudo dnf install gcc-c++ cmake python3-devel
-```
-
-**Arch / Manjaro / EndeavourOS**
-
-```bash
-sudo pacman -S base-devel cmake python
-```
-
-**macOS** (requires Homebrew)
-
-```bash
-brew install cmake python@3.12
-```
-
-**Windows**
-
-1. **C++ compiler** — Visual Studio with the *Desktop development with C++* workload, or MinGW-w64
-2. **CMake** — from cmake.org
-3. **Python** — from python.org. During installation, check **"Add Python to PATH"** and make sure **development headers** are included.
-
-Build:
-
-```bash
-# Go to the project folder
-cd slovorez/
-
-# Create the build directory
-mkdir build
-
-# Configure and build
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
-```
-
-This produces the shared library file in the project root.
-
-### Python package
-
 ```bash
 cd slovorez/
 conda activate new_env
 
 # CPU
-pip install .[cpu]
+pip install -e .[cpu]
 
 # CUDA (GPU)
-pip install .[gpu]
+pip install -e .[gpu]
 ```
 
 Demo:

@@ -1,22 +1,17 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["scikit-build-core>=0.10", "pybind11>=3.0.2"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "slovorez"
 version = "0.1.0"
 requires-python = ">=3.10"
-dependencies = [
-    "numpy"
-]
+dependencies = ["numpy"]
 
 [project.optional-dependencies]
-gpu = [
-    "onnxruntime-gpu>=1.21.0"
-]
-cpu = [
-    "onnxruntime>=1.21.0"
-]
+gpu = ["onnxruntime-gpu>=1.21.0"]
+cpu = ["onnxruntime>=1.21.0"]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.scikit-build]
+wheel.packages = ["src/slovorez"]
+cmake.build-type = "Release"

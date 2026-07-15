@@ -210,7 +210,7 @@ class Slovorez:
             batch_size:          number of characters per C++ tokenizer batch.
             model_batch:         maximum words per single model inference call.
             max_workers:         maximum CPU tokenizer workers (multiprocessing only).
-            threaded_mode: if True, spawns workers for CPU/GPU parallelism.
+            threaded_mode: if True, spawns threads for CPU/GPU multithreading.
                                   if False, runs sequentially in the main thread
                                   (recommended for Windows or small files).
         """

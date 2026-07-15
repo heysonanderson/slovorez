@@ -7,8 +7,15 @@ logger = logging.getLogger(__name__)
 _AUTO_GPU_PROVIDERS = [
     "CUDAExecutionProvider",
 ]
+_GPU_PROVIDERS = {"CUDAExecutionProvider", "TensorrtExecutionProvider"}
+_dlls_preloaded = False
 
-ort.preload_dlls()
+def _ensure_gpu_dlls_preloaded() -> None:
+    global _dlls_preloaded
+    if _dlls_preloaded:
+        return
+    ort.preload_dlls()
+    _dlls_preloaded = True
 
 class ModelResource:
     """Wraps an ONNX Runtime inference session with lazy initialisation.
@@ -74,6 +81,9 @@ class ModelResource:
 
         providers = self._build_providers()
         logger.debug("Creating ONNX session with providers: %s", providers)
+
+        if any(p in _GPU_PROVIDERS for p in providers):
+            _ensure_gpu_dlls_preloaded()
 
         try:
             self._session = ort.InferenceSession(

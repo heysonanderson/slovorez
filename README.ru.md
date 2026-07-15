@@ -65,10 +65,10 @@ cd slovorez/
 conda activate new_env
 
 # CPU
-pip install -e .[cpu]
+pip install .[cpu]
 
 # CUDA (GPU)
-pip install -e .[gpu]
+pip install .[gpu]
 ```
 
 Демо:

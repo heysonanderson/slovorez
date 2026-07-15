@@ -34,8 +34,7 @@ class Slovorez:
     Composes four components:
       - ``ModelResource``     -- ONNX inference session (GPU/CPU).
       - ``SlovorezTokenizer`` -- char-level encoder and BIES decoder.
-      - ``PersistenceIndex``  -- cross-session deduplication (seen-set).
-      - ``MorphemeRegistry``  -- in-memory morpheme store (base + validated).
+      - ``SeenIndex``         -- cross-session deduplication (seen-set).
       - ``LogWriter``         -- buffered JSONL output.
 
     Prefer ``from_pretrained()`` over direct construction.
@@ -58,10 +57,10 @@ class Slovorez:
     @classmethod
     def from_pretrained(
         cls,
-        model_name_or_path: Union[str, Path],
+        model_name_or_path: Union[str, Path] = "slovorez-test",
         output_path: Union[str, Path, None] = None,
         device: str = "auto",
-    ) -> Slovorez:
+    ) -> "Slovorez":
         """Load a Slovorez model from a local directory.
 
         The directory must contain a ``config.json`` file. All other resource
@@ -79,12 +78,10 @@ class Slovorez:
 
         Args:
             model_name_or_path: path to the model directory (absolute or
-                relative to cwd / PROJECT_ROOT). A bare name like
+                relative to cwd / PACKAGE_ROOT). A bare name like
                 ``"slovorez-test"`` works if the directory is resolvable.
             output_path: override where predictions are written. Defaults to
                 ``config["resources"]["output"]`` resolved inside the model dir.
-            base_dict_path: override the static base dictionary path. Defaults
-                to ``config["resources"]["base_dict"]`` if present.
             device: ``"auto"`` | ``"cuda"`` | ``"cpu"``.
 
         Example::
@@ -128,7 +125,6 @@ class Slovorez:
             writer     = LogWriter(resolved_output),
             model_name = model_name,
         )
-
     # ------------------------------------------------------------------
     # Inference
     # ------------------------------------------------------------------

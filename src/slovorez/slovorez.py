@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_BATCH_SIZE  = 65536
 _DEFAULT_MODEL_BATCH = 256
 _DEFAULT_QUEUE_LIMIT = 16
-_DEFAULT_MAX_WORKERS = 16
+_DEFAULT_MAX_WORKERS = 4
 
 # ---------------------------------------------------------------------------
 # Slovorez Orchestrator

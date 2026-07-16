@@ -44,6 +44,14 @@ Morpheme classes:
 
 You can pass text in any language — Slovorez extracts and segments only Russian words, preserving their order.
 
+### Decoding
+
+By default, predictions are decoded with greedy argmax. Pass `use_viterbi=True` for constrained BIES decoding, which enforces valid label transitions and improves boundary consistency:
+
+```python
+model.predict("...", use_viterbi=True)
+```
+
 ## Quality
 
 Slovorez (Sq NoRoPE, ~0.69M parameters) on the Revised RuMorphsLemmas test set, under two splits:
@@ -58,17 +66,33 @@ Slovorez (Sq NoRoPE, ~0.69M parameters) on the Revised RuMorphsLemmas test set, 
 
 *Boundary F1 — F1 over all morpheme boundaries; Root F1 — F1 over root boundaries; Accuracy — character-level; Word Acc — share of fully correct words.*
 
+## Performance
+
+Benchmarks on a corpus of Russian classic literature: ~3.6M tokens total, of which ~1.71M are Russian words (~150K unique forms); the rest are punctuation and non-Russian tokens, which the tokenizer skips. *Pure inference* runs the full pipeline (C++ tokenizer → dedup → ONNX inference → JSONL writer) over the ~150K unique forms; *real corpus* runs the whole corpus with the `SeenIndex` cache, which — by Zipf's law — turns repeats into cache hits (~91% hit rate here).
+
+**Pure inference — ~150K unique word forms (words/s):**
+
+| Configuration | 1 worker | 4 workers |
+|---|---|---|
+| CPU — Ryzen 7 5700X | ~13,200 | ~17,600 |
+| GPU — RTX 5060 Ti | ~19,500 | ~23,000 |
+
+**Real corpus — ~1.71M Russian words, sequential with cache (words/s):**
+
+| Configuration | Decoder | Throughput |
+|---|---|---|
+| CPU — Ryzen 7 5700X | argmax | ~141,000 |
+| CPU — Ryzen 7 5700X | Viterbi | ~67,000 |
+| GPU — RTX 5060 Ti (batch 2048) | argmax | ~246,000 |
+
 ## Installation
 
 ```bash
 cd slovorez/
-conda activate new_env
+conda activate <your_env>
 
-# CPU
+# CPU (recommended)
 pip install .[cpu]
-
-# CUDA (GPU)
-pip install .[gpu]
 ```
 
 Demo:
@@ -76,6 +100,23 @@ Demo:
 ```bash
 python -m src.main
 ```
+
+### GPU (optional, for advanced users)
+
+CPU is the default, recommended.
+
+If you specifically want CUDA execution:
+
+```bash
+pip install .[gpu]
+```
+
+GPU support is provided **as-is** and is intended for users who manage their own CUDA/cuDNN stack. `onnxruntime-gpu` does **not** bundle CUDA or cuDNN — you are responsible for providing compatible runtime libraries and putting them on the library search path. Start here:
+
+- ONNX Runtime CUDA execution provider: <https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html>
+- ONNX Runtime install / version matrix: <https://onnxruntime.ai/docs/install/>
+
+If your CUDA/cuDNN stack doesn't match ONNX Runtime's requirements, ORT falls back to CPU. The simplest way to avoid manual DLL setup is to install a PyTorch build compiled against the same major CUDA version as ONNX Runtime — ORT then reuses PyTorch's CUDA/cuDNN libraries automatically.
 
 ## How it works
 

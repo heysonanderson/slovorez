@@ -183,7 +183,7 @@ class Slovorez:
         results: list[dict] = []
         for pred in all_predictions:
             morphemes = [
-                Morpheme(text, REV_MORPHEME_TYPE_VOCAB[type_id], score)
+                Morpheme(text, REV_MORPHEME_TYPE_VOCAB.get(type_id, 'UNK'), score)
                 for text, type_id, score in pred["morphemes"]
             ]
             results.append({"word": pred["word"], "morphemes": morphemes})
@@ -209,7 +209,7 @@ class Slovorez:
             file_path:           path to the input text file.
             batch_size:          number of characters per C++ tokenizer batch.
             model_batch:         maximum words per single model inference call.
-            max_workers:         maximum CPU tokenizer workers (multiprocessing only).
+            max_workers:         maximum CPU tokenizer workers (threaded mode only).
             threaded_mode: if True, spawns threads for CPU/GPU multithreading.
                                   if False, runs sequentially in the main thread
                                   (recommended for Windows or small files).

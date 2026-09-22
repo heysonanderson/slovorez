@@ -8,7 +8,7 @@ from slovorez.io.loaders import load_json
 from slovorez.utils import resolve_model_dir, resolve_path, MODEL_CONFIG_NAME
 
 _DEFAULT_MAX_TOKEN_LEN = 64
-_DEFAULT_MIN_TOKEN_LEN = 4
+_DEFAULT_MIN_TOKEN_LEN = 1
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ Args:
                If None, only the base_dict is loaded.
     """
 
-    def __init__(self, min_len: int = 1, max_len: int = 64, base_dict_path: Union[str, Path] = None, jsonl_path: Union[str, Path] = None):
+    def __init__(self, min_len: int = 1, max_len: int = 64, base_dict_path: str | Path | None = None, jsonl_path: str | Path | None = None):
         self._seen = self._init_seen(base_dict_path, jsonl_path)
         self.min_len = min_len
         self.max_len = max_len

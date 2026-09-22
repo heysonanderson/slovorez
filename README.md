@@ -92,7 +92,7 @@ cd slovorez/
 conda activate <your_env>
 
 # CPU (recommended)
-pip install .[cpu]
+pip install slovorez[cpu]
 ```
 
 Demo:
@@ -108,7 +108,7 @@ CPU is the default, recommended.
 If you specifically want CUDA execution:
 
 ```bash
-pip install .[gpu]
+pip install slovorez[gpu]
 ```
 
 GPU support is provided **as-is** and is intended for users who manage their own CUDA/cuDNN stack. `onnxruntime-gpu` does **not** bundle CUDA or cuDNN — you are responsible for providing compatible runtime libraries and putting them on the library search path. Start here:
@@ -124,8 +124,20 @@ The architecture is a Conv1D network with sequence labeling in the BIES scheme (
 
 ## License
 
-<!-- add license -->
+MIT License. Copyright (c) 2026 heysonanderson, pubari. See [LICENSE](LICENSE).
 
 ## Citation
 
-<!-- BibTeX once the paper is published -->
+If you use Slovorez in your research, please cite it via the [CITATION.cff](CITATION.cff)
+file in this repository.
+
+```bibtex
+@software{slovorez,
+  author  = {heysonanderson and pubari},
+  title   = {Slovorez: neural morpheme segmentation for Russian},
+  year    = {2026},
+  version = {0.1.0},
+  url     = {https://github.com/heysonanderson/slovorez},
+  license = {MIT}
+}
+```

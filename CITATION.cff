@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: If you use this software, please cite it as below.
+authors:
+  - name: heysonanderson
+  - name: pubari
+title: 'Slovorez: neural morpheme segmentation for Russian'
+version: 0.1.0
+date-released: 2026-07-16
+url: https://github.com/heysonanderson/slovorez
+license: MIT
+keywords:
+  - morpheme segmentation
+  - russian
+  - nlp
+  - onnx

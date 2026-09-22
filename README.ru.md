@@ -92,7 +92,7 @@ cd slovorez/
 conda activate <ваше_окружение>
 
 # CPU (рекомендуется)
-pip install .[cpu]
+pip install slovorez[cpu]
 ```
 
 Демо:
@@ -108,7 +108,7 @@ CPU — режим по умолчанию, рекомендуется.
 Если вам всё же нужен именно CUDA-инференс:
 
 ```bash
-pip install .[gpu]
+pip install slovorez[gpu]
 ```
 
 Поддержка GPU предоставляется **как есть** и рассчитана на пользователей, которые сами управляют своим стеком CUDA/cuDNN. `onnxruntime-gpu` **не** включает CUDA и cuDNN — за совместимые рантайм-библиотеки и их наличие в пути поиска отвечаете вы. Начните отсюда:
@@ -124,8 +124,20 @@ pip install .[gpu]
 
 ## Лицензия
 
-Released under the [MIT License](LICENSE).
+Лицензия MIT. Copyright (c) 2026 heysonanderson, pubari. См. [LICENSE](LICENSE).
 
 ## Цитирование
 
-<!-- BibTeX появится после публикации статьи -->
+Если вы используете Slovorez в исследовании, пожалуйста, цитируйте его через файл [CITATION.cff](CITATION.cff)
+в этом репозитории.
+
+```bibtex
+@software{slovorez,
+  author  = {heysonanderson and pubari},
+  title   = {Slovorez: neural morpheme segmentation for Russian},
+  year    = {2026},
+  version = {0.1.0},
+  url     = {https://github.com/heysonanderson/slovorez},
+  license = {MIT}
+}
+```

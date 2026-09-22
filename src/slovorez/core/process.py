@@ -52,7 +52,7 @@ def _build_bies_constraints(
     C = max(id2tag) + 1 if id2tag else 0
     def parse(tag):
         if tag in ("<PAD>", "<UNK>"): return None, None
-        return (tag.split('-', 1) + ['', ''])[:2] if '-' in tag else ('S', tag)
+        return tag.split('-', 1) if '-' in tag else ('S', tag)
     
     P = {i: parse(t) for i, t in id2tag.items()}
     T = np.zeros((C, C), bool)
@@ -97,6 +97,8 @@ def _viterbi(logp: np.ndarray, trans: np.ndarray, start_ok: np.ndarray, end_ok: 
 
 
 def _pad_batch(tokenized_list: list[list[int]], maxlen: int = 64) -> np.ndarray:
+    if not tokenized_list:
+        return np.zeros((0, 0), dtype=np.int32)
     current_max = max(len(t) for t in tokenized_list)
     actual_len = min(current_max, maxlen)
     arr = np.zeros((len(tokenized_list), actual_len), dtype=np.int32)
@@ -197,7 +199,7 @@ class SlovorezTokenizer:
             self.rev_bies_vocab, MORPHEME_TYPE_VOCAB
         )
         
-        # Инициализация матриц ограничений Витерби
+        # Initialize Viterbi constraint matrices.
         T, start_ok, end_ok = _build_bies_constraints(self.rev_bies_vocab)
         self._trans = np.where(T, 0.0, -1e9).astype(np.float32)
         self._start_ok_mask = np.where(start_ok, 0.0, -1e9).astype(np.float32)
@@ -323,7 +325,7 @@ class SlovorezTokenizer:
         self,
         words: list[str],
         logits: np.ndarray,
-        use_viterbi: bool = True,
+        use_viterbi: bool = False,
     ) -> Generator[tuple[list[tuple[str, int, float]], bool], None, None]:
         """Decode raw model logits into morpheme segments word by word."""
         

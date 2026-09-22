@@ -22,3 +22,5 @@ large.txt
 *predictions.jsonl
 test.py
 models/dev/
+.clinerules/
+plans/

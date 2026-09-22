@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 import logging
 import numpy as np
-import onnxruntime as ort
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +11,19 @@ _AUTO_GPU_PROVIDERS = [
 _GPU_PROVIDERS = {"CUDAExecutionProvider", "TensorrtExecutionProvider"}
 _dlls_preloaded = False
 
-def _ensure_gpu_dlls_preloaded() -> None:
+def _import_ort():
+    try:
+        import onnxruntime as ort
+        return ort
+    except ImportError as e:
+        raise ImportError(
+            "onnxruntime is not installed. Slovorez needs it for inference:\n"
+            '    pip install "slovorez[cpu]"     # recommended\n'
+            '    pip install "slovorez[gpu]"     # CUDA, advanced users\n'
+        ) from e
+    
+
+def _ensure_gpu_dlls_preloaded(ort) -> None:
     global _dlls_preloaded
     if _dlls_preloaded:
         return
@@ -44,7 +57,7 @@ class ModelResource:
     # Provider selection
     # ------------------------------------------------------------------
 
-    def _build_providers(self) -> list[str]:
+    def _build_providers(self, ort) -> list[str]:
         available = ort.get_available_providers()
 
         if self.device == "cpu":
@@ -79,11 +92,12 @@ class ModelResource:
         if self._session is not None:
             return self._session
 
-        providers = self._build_providers()
+        ort = _import_ort()
+        providers = self._build_providers(ort)
         logger.debug("Creating ONNX session with providers: %s", providers)
 
         if any(p in _GPU_PROVIDERS for p in providers):
-            _ensure_gpu_dlls_preloaded()
+            _ensure_gpu_dlls_preloaded(ort)
 
         try:
             self._session = ort.InferenceSession(

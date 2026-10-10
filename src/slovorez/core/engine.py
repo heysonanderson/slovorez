@@ -49,7 +49,7 @@ class ModelResource:
         self.model_path = model_path
         self.device = device
         self.initialized_device: str | None = None
-        self._session: ort.InferenceSession | None = None
+        self._session: ort.InferenceSession | None = None       # type:ignore
         self._input_names: list[str] = []
         self._output_names: list[str] = []
 
@@ -87,7 +87,7 @@ class ModelResource:
     # Session lifecycle
     # ------------------------------------------------------------------
 
-    def get_session(self) -> ort.InferenceSession:
+    def get_session(self) -> ort.InferenceSession:                      # type:ignore
         """Return the inference session, creating it on first call."""
         if self._session is not None:
             return self._session

@@ -4,12 +4,15 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "slovorez"
-version = "0.1.0"
+version = "0.2.0"
 description = "Neural morpheme segmentation for Russian. Lightweight, CPU/ONNX, C++ core."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
-dependencies = ["numpy"]
+dependencies = [
+  "numpy",
+  "onnxruntime>=1.21.0"
+  ]
 keywords = ["nlp", "russian", "morpheme", "segmentation", "onnx"]
 classifiers = [
   "Programming Language :: Python :: 3",
@@ -21,10 +24,9 @@ classifiers = [
 Homepage = "https://github.com/heysonanderson/slovorez"
 Issues = "https://github.com/heysonanderson/slovorez/issues"
 
-[project.optional-dependencies]
-cpu = ["onnxruntime>=1.21.0"]
-gpu = ["onnxruntime-gpu>=1.21.0"]
-
 [tool.scikit-build]
 wheel.packages = ["src/slovorez"]
 cmake.build-type = "Release"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

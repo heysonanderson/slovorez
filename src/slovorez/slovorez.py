@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import queue
+import threading
 import logging
 from pathlib import Path
 from typing import Union
-from slovorez.core.engine import ModelResource
-from slovorez.core.process import SlovorezTokenizer
+from slovorez.core.engine import ModelResource, available_cpu_count
+from slovorez.core.codec import MorphCodec
 from slovorez.core.cache import LogWriter, SeenIndex
-from slovorez.core.vocab import Morpheme, REV_MORPHEME_TYPE_VOCAB
 from slovorez.core.tokenizer import FFTokenizer, FTTokenizer
-from slovorez.io.loaders import load_json
-from slovorez.utils import resolve_model_dir, resolve_path, MODEL_CONFIG_NAME
+from slovorez.config import SlovorezConfig
+from slovorez.paths import model_predictions_path
+from slovorez.hub import resolve_model_dir, CONFIG_NAME
 from slovorezCXX import TokenType
 
 logger = logging.getLogger(__name__)
@@ -22,8 +23,24 @@ logger = logging.getLogger(__name__)
 _DEFAULT_BATCH_SIZE  = 65536
 _DEFAULT_MODEL_BATCH = 256
 _DEFAULT_QUEUE_LIMIT = 16
-_DEFAULT_MAX_WORKERS = 4
+_MIN_WORKERS = 1
+_DEFAULT_WORKERS = max(_MIN_WORKERS, available_cpu_count() - 2)
 
+
+def _put_unless_stopped(
+        q: queue.Queue, item, stop: threading.Event
+)-> bool:
+    while not stop.is_set():
+        try:
+            q.put(item, timeout=0.1)
+            return True
+        except queue.Full:
+            pass
+    return False
+
+def _check_workers_number(max_workers: int) -> None:
+    if max_workers < _MIN_WORKERS:
+        raise ValueError(f"max_workers must be >= 1, got {max_workers}; use threaded_mode=False for sequential mode")
 # ---------------------------------------------------------------------------
 # Slovorez Orchestrator
 # ---------------------------------------------------------------------------
@@ -32,8 +49,8 @@ class Slovorez:
     """Morpheme segmentation pipeline for Russian text.
 
     Composes four components:
-      - ``ModelResource``     -- ONNX inference session (GPU/CPU).
-      - ``SlovorezTokenizer`` -- char-level encoder and BIES decoder.
+      - ``ModelResource``     -- ONNX inference session (CPU).
+      - ``MorphCodec`` -- char-level encoder and BIES decoder.
       - ``SeenIndex``         -- cross-session deduplication (seen-set).
       - ``LogWriter``         -- buffered JSONL output.
 
@@ -43,7 +60,7 @@ class Slovorez:
     def __init__(
         self,
         model: ModelResource,
-        tokenizer: SlovorezTokenizer,
+        tokenizer: MorphCodec,
         index: SeenIndex,
         writer: LogWriter,
         model_name: str = "unknown",
@@ -57,136 +74,83 @@ class Slovorez:
     @classmethod
     def from_pretrained(
         cls,
-        model_name_or_path: Union[str, Path] = "slovorez-test",
-        output_path: Union[str, Path, None] = None,
-        device: str = "auto",
-    ) -> "Slovorez":
-        """Load a Slovorez model from a local directory.
+        name_or_path: Union[str, Path, None] = "slovorez-flash",
+        predictions_path: Union[str, Path, None] = None,
+        providers: list[str] | None = None,
+    ) -> Slovorez:
 
-        The directory must contain a ``config.json`` file. All other resource
-        paths (weights, base dictionary, predictions output) are resolved
-        relative to that directory unless explicitly overridden.
-
-        Directory layout (conventional)::
-
-            models/
-            └── slovorez-test/
-                ├── config.json          # required
-                ├── slovorez-test.onnx     # weights
-                ├── base_dict.json       # optional static dictionary
-                └── predictions.jsonl   # default output
-
-        Args:
-            model_name_or_path: path to the model directory (absolute or
-                relative to cwd / PACKAGE_ROOT). A bare name like
-                ``"slovorez-test"`` works if the directory is resolvable.
-            output_path: override where predictions are written. Defaults to
-                ``config["resources"]["output"]`` resolved inside the model dir.
-            device: ``"auto"`` | ``"cuda"`` | ``"cpu"``.
-
-        Example::
-
-            model = Slovorez.from_pretrained("models/slovorez-v1")
-            model = Slovorez.from_pretrained("models/slovorez-v1", device="cuda")
-            model = Slovorez.from_pretrained(
-                "models/slovorez-v1",
-                output_path="runs/experiment-1/predictions.jsonl",
-            )
-        """
-        model_dir   = resolve_model_dir(model_name_or_path)
-        config      = load_json(model_dir / MODEL_CONFIG_NAME)
-        resources   = config.get("resources", {})
-        model_specs = config["model_specs"]
-        model_name  = model_specs["name"]
-
-        # --- weights ---------------------------------------------------------
-        weights_filename = resources.get("weights", f"{model_name}.onnx")
-        model_path = model_dir / weights_filename
-        if not model_path.is_file():
-            raise FileNotFoundError(
-                f"Model weights not found: {model_path}. "
-                f"Expected filename from config[\"resources\"][\"weights\"]: "
-                f"'{weights_filename}'"
-            )
-
-        # --- output path -----------------------------------------------------
-        if output_path is not None:
-            resolved_output = resolve_path(output_path)
+        model_dir = resolve_model_dir(name_or_path=name_or_path)
+        config = SlovorezConfig.from_file(model_dir / CONFIG_NAME)
+        weights_path = model_dir / config.resources.weights.file
+        if predictions_path is not None:
+            predictions_path = Path(predictions_path).resolve()
         else:
-            default_output_name = resources.get("output", "predictions.jsonl")
-            resolved_output = model_dir / default_output_name
-
-        logger.info(f"Predictions will be written to: {resolved_output}")
+            predictions_path = model_predictions_path(config.name, config.version)
 
         return cls(
-            model      = ModelResource(str(model_path), device=device),
-            tokenizer  = SlovorezTokenizer.from_config(config),
-            index      = SeenIndex.from_config(config, model_dir_path=model_dir),
-            writer     = LogWriter(resolved_output),
-            model_name = model_name,
+            model = ModelResource(weights_path, providers=providers),
+            tokenizer = MorphCodec.from_config(config),
+            index = SeenIndex(
+                minlen = config.io.minlen,
+                maxlen = config.io.maxlen,
+                base_dict_path = model_dir / config.resources.base_dict.file,
+                predictions_path=predictions_path),
+            writer = LogWriter(predictions_path),
+            model_name = config.name
         )
     # ------------------------------------------------------------------
     # Inference
     # ------------------------------------------------------------------
  
-    def predict(self, text: str, write_to_cache: bool = False, use_viterbi: bool = False) -> list[dict]:
-        """Segment Russian words in text into morphemes, preserving word order.
- 
-        Two-phase approach:
-          1. Collect all tokens, infer words, register results.
-          2. Return ordered output.
- 
+    def predict(self, text: str) -> list[dict]:
+        """Segment the Russian words of ``text`` into morphemes.
+
+        Words are lowercased and returned in text order, duplicates included.
+        Non-Russian tokens are dropped; words longer than the model's ``maxlen``
+        (64 for slovorez-flash) are skipped silently. Nothing is written to the
+        predictions cache.
+
+        Each record is the same as a line of the predictions jsonl::
+
+            {
+                "word": "выделяется",
+                "morphemes": [["вы", "PREF", 0.99], ["дел", "ROOT", 0.99], ...],
+                "confidence": 0.15,
+                "model": "slovorez-flash",
+            }
+
+        ``morphemes`` is a list of ``[text, type, score]``; ``type`` is one of
+        the model's morpheme types (PREF, ROOT, SUFF, END, POSTFIX, LINK, HYPH),
+        ``score`` is the per-morpheme confidence in [0, 1]. ``confidence`` is
+        the calibrated confidence of the whole parse. Joining the morpheme
+        texts gives back ``word``.
+
         Args:
-            text: raw input string. Any language mix is accepted -- only Russian words 
-                are extracted and segmented.
-            write_to_cache: if ``True``, newly inferred words are persisted 
-                to the index and JSONL log so they are reused across calls.
-                If ``False``, results not written to disk.
- 
+            text: any text; only Russian words are segmented.
+
         Returns:
-            List of result dicts, one per Russian word token in input order.
-            Each dict has keys: word, morphemes.
- 
-        Example::
- 
-            results = model.predict("Я сижу в своей комнате, в обиталище шума всей квартиры.")
-            # [ ...            
-            #   {"word": "комнате",   "morphemes": [...]},
-            #   {"word": "в",   "morphemes": [...]      },
-            #   {"word": "обиталище", "morphemes": [...]},
-            #   {"word": "шума",   "morphemes": [...]   },
-            #   ...   ]
+            One record per Russian word, in text order (format above).
+
+        Raises:
+            TypeError: ``text`` is not a ``str``.
+            ValueError: ``text`` is empty or whitespace only.
         """
-        tokenizer_cxx = FTTokenizer(text)
+
+        tokenizer_cxx = FTTokenizer(text + "\n")
         tokenizer_cxx.set_filter(TokenType.RUWORD)
-        tokenizer_cxx.set_token_max_len(self._index.max_len)
+        tokenizer_cxx.set_token_min_len(self._index.minlen)
+        tokenizer_cxx.set_token_max_len(self._index.maxlen)
 
-        all_predictions = []
-        batch = tokenizer_cxx.get_batch_tokens(tolower=True)
+        results = []
+        batch = tokenizer_cxx.get_batch_tokens()
         while batch is not None:
-            encoded      = self._tokenizer.encode_batch(batch)
-            logits       = self._model.predict(encoded)
-            rich_results = self._tokenizer.decode_predictions_detail(
-                batch, logits, self._model_name, use_viterbi=use_viterbi
+            encoded, lengths = self._tokenizer.encode_batch_padded(batch)
+            logits = self._model.predict(encoded)
+            results_batch = self._tokenizer.decode_predictions_batch(
+                batch, logits, lengths, self._model_name
             )
-
-            if write_to_cache:
-                self._index.mark_seen(batch)
-                self._writer.write(rich_results)
-
-            all_predictions.extend(rich_results)
+            results.extend(results_batch)
             batch = tokenizer_cxx.get_batch_tokens()
-
-        if write_to_cache:
-            self._writer.flush()
-
-        results: list[dict] = []
-        for pred in all_predictions:
-            morphemes = [
-                Morpheme(text, REV_MORPHEME_TYPE_VOCAB.get(type_id, 'UNK'), score)
-                for text, type_id, score in pred["morphemes"]
-            ]
-            results.append({"word": pred["word"], "morphemes": morphemes})
 
         return results
     
@@ -199,31 +163,30 @@ class Slovorez:
         file_path: Union[str, Path],
         batch_size: int = _DEFAULT_BATCH_SIZE,
         model_batch: int = _DEFAULT_MODEL_BATCH,
-        max_workers: int = _DEFAULT_MAX_WORKERS,
-        threaded_mode: bool = False,
-        use_viterbi=False
+        max_workers: int = _DEFAULT_WORKERS,
+        threaded_mode: bool = False
     ) -> None:
-        """Process a text file and persist all morpheme predictions to disk.
-
+        """Process a text file and persist all morpheme predictions to disk.\n
+        If the process falls, its better to recreate the class using the `from_pretrained` method. 
         Args:
             file_path:           path to the input text file.
-            batch_size:          number of characters per C++ tokenizer batch.
+            batch_size:          number of tokens per C++ tokenizer batch.
             model_batch:         maximum words per single model inference call.
-            max_workers:         maximum CPU tokenizer workers (threaded mode only).
-            threaded_mode: if True, spawns threads for CPU/GPU multithreading.
+            max_workers:         maximum CPU inferencee workers (threaded mode only).
+            threaded_mode: if True, spawns threads for CPU multithreading.
                                   if False, runs sequentially in the main thread
                                   (recommended for Windows or small files).
         """
         if threaded_mode:
-            self._process_file_multithread(file_path, batch_size, model_batch, max_workers, use_viterbi)
+            self._process_file_multithread(file_path, batch_size, model_batch, max_workers)
         else:
-            self._process_file_sequential(file_path, batch_size, model_batch, use_viterbi)
+            self._process_file_sequential(file_path, batch_size, model_batch)
 
-    def _infer_and_persist(self, words, use_viterbi) -> None:
-        encoded = self._tokenizer.encode_batch(words)
+    def _infer_and_persist(self, words) -> None:
+        encoded, lengths = self._tokenizer.encode_batch_padded(words)
         logits = self._model.predict(encoded)
-        predictions = self._tokenizer.decode_predictions_detail(
-            words, logits, self._model_name, use_viterbi=use_viterbi
+        predictions = self._tokenizer.decode_predictions_batch(
+            words, logits, lengths, self._model_name
         )
         self._writer.write(predictions)
 
@@ -231,31 +194,30 @@ class Slovorez:
         self,
         file_path: Union[str, Path],
         batch_size: int = _DEFAULT_BATCH_SIZE,
-        model_batch: int = _DEFAULT_MODEL_BATCH,
-        use_viterbi: bool = False
+        model_batch: int = _DEFAULT_MODEL_BATCH
     ) -> None:
         tokenizer_cxx = FFTokenizer(file_path)
         tokenizer_cxx.set_batch_size(batch_size)
         tokenizer_cxx.set_filter(TokenType.RUWORD)
-        tokenizer_cxx.set_token_min_len(self._index.min_len)
-        tokenizer_cxx.set_token_max_len(self._index.max_len)
+        tokenizer_cxx.set_token_min_len(self._index.minlen)
+        tokenizer_cxx.set_token_max_len(self._index.maxlen)
 
-        pending = []
-        batch = tokenizer_cxx.get_batch_tokens()
-        while batch:
-            unseen = self._index.filter_unseen(set(batch))
-            self._index.mark_seen(unseen)
-            pending.extend(unseen)
-
-            while len(pending) >= model_batch:
-                self._infer_and_persist(pending[:model_batch], use_viterbi=use_viterbi)
-                pending = pending[model_batch:]
+        try:
+            pending = []
             batch = tokenizer_cxx.get_batch_tokens()
-
-        if pending:
-            self._infer_and_persist(pending, use_viterbi=use_viterbi)
-
-        self._writer.flush()
+            while batch:
+                unseen = self._index.filter_unseen(set(batch))
+                self._index.mark_seen(unseen)
+                pending.extend(unseen)
+                while len(pending) >= model_batch:
+                    pending = sorted(pending, key=len)
+                    self._infer_and_persist(pending[:model_batch])
+                    pending = pending[model_batch:]
+                batch = tokenizer_cxx.get_batch_tokens()
+            if pending: 
+                self._infer_and_persist(pending)
+        finally:
+            self._writer.flush()
         logger.info(f"File '{file_path}' successfully processed (sequential).")
 
     def _process_file_multithread(
@@ -263,20 +225,29 @@ class Slovorez:
         file_path: Union[str, Path],
         batch_size: int = _DEFAULT_BATCH_SIZE,
         model_batch: int = _DEFAULT_MODEL_BATCH,
-        max_workers: int = _DEFAULT_MAX_WORKERS,
-        use_viterbi: bool = False
+        max_workers: int = _DEFAULT_WORKERS
     ) -> None:
-        import threading
 
+        _check_workers_number(max_workers)
+
+        tokenizer_cxx = FFTokenizer(file_path)
+        tokenizer_cxx.set_batch_size(batch_size)
+        tokenizer_cxx.set_filter(TokenType.RUWORD)
+        tokenizer_cxx.set_token_min_len(self._index.minlen)
+        tokenizer_cxx.set_token_max_len(self._index.maxlen)
+        
         chunk_queue = queue.Queue(maxsize=_DEFAULT_QUEUE_LIMIT)
         writer_queue = queue.Queue()
 
         self._model.get_session()
 
+        errors = []
+        stop = threading.Event()
+
         pipeline_threads = [
             threading.Thread(
                 target=self._pipeline_worker,
-                args=(chunk_queue, writer_queue, self._model, self._tokenizer, self._model_name, use_viterbi),
+                args=(chunk_queue, writer_queue, self._model, self._tokenizer, self._model_name, errors, stop),
                 daemon=True
             )
             for _ in range(max_workers)
@@ -286,67 +257,83 @@ class Slovorez:
 
         writer_thread = threading.Thread(
             target=self._writer_worker,
-            args=(writer_queue, self._writer),
+            args=(writer_queue, self._writer, errors, stop),
             daemon=True
         )
         writer_thread.start()
 
-        tokenizer_cxx = FFTokenizer(file_path)
-        tokenizer_cxx.set_batch_size(batch_size)
-        tokenizer_cxx.set_filter(TokenType.RUWORD)
-        tokenizer_cxx.set_token_min_len(self._index.min_len)
-        tokenizer_cxx.set_token_max_len(self._index.max_len)
-
-        pending = []
-        batch = tokenizer_cxx.get_batch_tokens()
-        while batch:
-            unseen = self._index.filter_unseen(set(batch))
-            self._index.mark_seen(unseen)
-            pending.extend(unseen)
-            while len(pending) >= model_batch:
-                chunk_queue.put(pending[:model_batch])
-                pending = pending[model_batch:]
+        try:
+            pending = []
             batch = tokenizer_cxx.get_batch_tokens()
+            while batch and not stop.is_set():
+                unseen = self._index.filter_unseen(set(batch))
+                self._index.mark_seen(unseen)
+                pending.extend(unseen)
+                while len(pending) >= model_batch:
+                    pending = sorted(pending, key=len)
+                    if not _put_unless_stopped(chunk_queue, pending[:model_batch], stop):
+                        break
+                    pending = pending[model_batch:]
+                batch = tokenizer_cxx.get_batch_tokens()
+            if pending:
+                _put_unless_stopped(chunk_queue, pending, stop)
+            for _ in pipeline_threads:
+                _put_unless_stopped(chunk_queue, None, stop)
+        except BaseException:
+            stop.set()
+            raise
+        finally:
+            for t in pipeline_threads:
+                t.join()
+            writer_queue.put(None)
+            writer_thread.join()
 
-        if pending:
-            chunk_queue.put(pending)
+        if errors:
+            raise errors[0]
 
-        for _ in pipeline_threads:
-            chunk_queue.put(None)
-        for t in pipeline_threads:
-            t.join()
-
-        writer_queue.put(None)
-        writer_thread.join()
-        self._writer.flush()
+        logger.info(f"File '{file_path}' successfully processed (multithread).")
 
     @staticmethod
     def _pipeline_worker(
             chunk_queue: queue.Queue,
             writer_queue: queue.Queue,
             model: ModelResource,
-            tokenizer: SlovorezTokenizer,
+            tokenizer: MorphCodec,
             model_name: str,
-            use_viterbi: bool
+            errors: list[Exception],
+            stop: threading.Event
     ) -> None:
-        while True:
-            chunk = chunk_queue.get()
-            if chunk is None:
-                break
-            encoded = tokenizer.encode_batch(chunk)
-            logits = model.predict(encoded)
-            results = tokenizer.decode_predictions_detail(chunk, logits, model_name, use_viterbi=use_viterbi)
-            writer_queue.put((results))
+        try:
+            while not stop.is_set():
+                try:
+                    chunk = chunk_queue.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+                if chunk is None:
+                    break
+                encoded, lengths = tokenizer.encode_batch_padded(chunk)
+                logits = model.predict(encoded)
+                results = tokenizer.decode_predictions_batch(chunk, logits, lengths, model_name)
+                writer_queue.put(results)
+        except Exception as e:
+            errors.append(e)
+            stop.set()
 
     @staticmethod
     def _writer_worker(
             writer_queue: queue.Queue,
             writer: LogWriter,
+            errors: list[Exception],
+            stop: threading.Event
     ) -> None:
-        while True:
-            item = writer_queue.get()
-            if item is None:
-                break
-            results = item
-            writer.write(results)
-        writer.flush()
+        try:
+            while True:
+                item = writer_queue.get()
+                if item is None:
+                    break
+                results = item
+                writer.write(results)
+            writer.flush()
+        except Exception as e:
+            errors.append(e)
+            stop.set()

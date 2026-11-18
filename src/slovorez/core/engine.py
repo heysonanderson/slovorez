@@ -1,87 +1,42 @@
 from __future__ import annotations
 
+import os
 import logging
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
-_AUTO_GPU_PROVIDERS = [
-    "CUDAExecutionProvider",
-]
-_GPU_PROVIDERS = {"CUDAExecutionProvider", "TensorrtExecutionProvider"}
-_dlls_preloaded = False
-
-def _import_ort():
+def available_cpu_count() -> int:
     try:
-        import onnxruntime as ort
-        return ort
-    except ImportError as e:
-        raise ImportError(
-            "onnxruntime is not installed. Slovorez needs it for inference:\n"
-            '    pip install "slovorez[cpu]"     # recommended\n'
-            '    pip install "slovorez[gpu]"     # CUDA, advanced users\n'
-        ) from e
-    
+        return len(os.sched_getaffinity(0))
+    except AttributeError:
+        pass
+    try:
+        import psutil
+        affinity = psutil.Process().cpu_affinity()
+        if affinity:
+            return len(affinity)
+    except Exception:
+        pass
+    return os.cpu_count() or 1
 
-def _ensure_gpu_dlls_preloaded(ort) -> None:
-    global _dlls_preloaded
-    if _dlls_preloaded:
-        return
-    ort.preload_dlls()
-    _dlls_preloaded = True
 
 class ModelResource:
     """Wraps an ONNX Runtime inference session with lazy initialisation.
 
     Args:
-        model_path: path to the ``.onnx`` weights file.
-        device:     execution provider hint.
-
-                    * ``"auto"``     -- try CUDA, fall back to CPU (default).
-                    * ``"cuda"``     -- require CUDA; raise if unavailable.
-                    * ``"tensorrt"`` -- try TensorRT → CUDA → CPU. Requires
-                                       libnvinfer; raises if TensorRT provider
-                                       is not registered in ORT.
-                    * ``"cpu"``      -- CPU only.
+        `model_path`: path to the ``.onnx`` weights file.
+        `providers`: execution provider list, InferenceSession get it as is. `None` for `CPUExecutionProvider`.
+        Other providers are not tested.
     """
 
-    def __init__(self, model_path: str, device: str = "auto"):
+    def __init__(self, model_path: str, providers: list[str] | None = None, intra = 1):
         self.model_path = model_path
-        self.device = device
-        self.initialized_device: str | None = None
+        self.providers = ["CPUExecutionProvider"] if providers is None else providers
+        self.intra: int = intra
         self._session: ort.InferenceSession | None = None       # type:ignore
         self._input_names: list[str] = []
         self._output_names: list[str] = []
-
-    # ------------------------------------------------------------------
-    # Provider selection
-    # ------------------------------------------------------------------
-
-    def _build_providers(self, ort) -> list[str]:
-        available = ort.get_available_providers()
-
-        if self.device == "cpu":
-            return ["CPUExecutionProvider"]
-
-        if self.device == "tensorrt":
-            if "TensorrtExecutionProvider" not in available:
-                raise RuntimeError(
-                    "Requested device='tensorrt', but TensorrtExecutionProvider is not "
-                    "registered in this ORT build. Install TensorRT libraries and ensure "
-                    "they are on LD_LIBRARY_PATH."
-                )
-            return ["TensorrtExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"]
-
-        cuda_providers = [p for p in _AUTO_GPU_PROVIDERS if p in available]
-
-        if self.device == "cuda" and not cuda_providers:
-            raise RuntimeError(
-                f"Requested device='cuda', but CUDAExecutionProvider is not available. "
-                f"Registered providers: {available}. "
-                "Check CUDA / cuDNN installation and LD_LIBRARY_PATH."
-            )
-
-        return list(dict.fromkeys(cuda_providers + ["CPUExecutionProvider"]))
 
     # ------------------------------------------------------------------
     # Session lifecycle
@@ -91,25 +46,27 @@ class ModelResource:
         """Return the inference session, creating it on first call."""
         if self._session is not None:
             return self._session
-
-        ort = _import_ort()
-        providers = self._build_providers(ort)
+        import onnxruntime as ort
+        providers = self.providers
         logger.debug("Creating ONNX session with providers: %s", providers)
 
-        if any(p in _GPU_PROVIDERS for p in providers):
-            _ensure_gpu_dlls_preloaded(ort)
-
         try:
+
+            opts = ort.SessionOptions()
+            if self.intra is not None:
+                opts.intra_op_num_threads = self.intra
+                opts.inter_op_num_threads = self.intra
+
             self._session = ort.InferenceSession(
                 self.model_path,
-                providers=providers,
+                sess_options=opts,
+                providers=providers
             )
             
             self._input_names = [inp.name for inp in self._session.get_inputs()]
             self._output_names = [out.name for out in self._session.get_outputs()]
             
-            self.initialized_device = self._session.get_providers()[0]
-            logger.info("Session initialized with provider: %s", self.initialized_device)
+            logger.info("Session initialized with provider: %s", self._session.get_providers()[0])
         except Exception as e:
             logger.error("Failed to create ONNX session: %s", e)
             raise

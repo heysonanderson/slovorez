@@ -1,0 +1,1408 @@
+{
+ "name": "slovorez-flash",
+ "version": "0.2.0",
+ "scope": "lemmas",
+ "created": "2026-11-11",
+ "files": {
+  "model.onnx": "cc7fb13aa4749ce7f8f52bfbef28be4f34a05d7e6141e3fdc0474b22aa08bbe4",
+  "base_dict.json": "2083dc361f44a5aa927bf1999879bad5867602fc24c125b1e85478f4ec9b9092",
+  "config.json": "e0ea25317981fadba4fcbdc9b159f01a648a4c24eac1430da6470229747f0611"
+ },
+ "manifest": {
+  "file": "prod-training/0.2.0/manifest.json",
+  "sha256": "4ce3100f4653ebe86b4cc8d1f78d41e88d5000ae6ada46963f57fe58e36fea3d",
+  "content": {
+   "schema": 1,
+   "release": "0.2.0",
+   "model": {
+    "family": "slovorez-flash",
+    "scope": "lemmas",
+    "inputs": [
+     "chars"
+    ]
+   },
+   "vocab": {
+    "file": "data/vocab.json",
+    "sha256": "ea59cde2cae04cf67562ce08f85adb4ece403092148e932b6d07b084edf40f78",
+    "char_fingerprint": "15ffc12a97be02d40891a83d42e6cc43d239d100965e56e832ef896649b0a842"
+   },
+   "dictionary": {
+    "file": "data/base_dict.json",
+    "sha256": "20d8f3d10ffe4a53539316da7144b319ea23bc7893c3da04d7c8126b7b6623ad",
+    "frozen": {
+     "file": "data/base_dict.json",
+     "sha256": "8bd0a98db7a41cbed1b98aa55d7b04a9afadf637fa31d8ab8e1c9c4c313ccb8a"
+    },
+    "patch": "data/patch.json"
+   },
+   "splits": {
+    "split_root": {
+     "file": "iterations/global/split_root.json",
+     "sha256": "7ff93a6dba2c9d0c2e827545f29e46ffde7d314f24fc7843f9a7f31a3a882ed2"
+    },
+    "split_random": {
+     "file": "iterations/global/split_random.json",
+     "sha256": "4c03212e473616b1ea94ab8d9caeeb9ee940f57a24d4b6c6c987258a030708d0"
+    },
+    "holdout": {
+     "file": "iterations/global/holdout.json",
+     "sha256": "f9631c57310cd940ef0031099ef3d86c16ea1c589ea52117dea629a35c3b94e7"
+    }
+   },
+   "letters": {
+    "variant": "e32-mirror-tied",
+    "grid": "runs/grid-v2"
+   }
+  }
+ },
+ "base_dict": {
+  "source": "prod-training/0.2.0/data/base_dict.json",
+  "source_sha256": "20d8f3d10ffe4a53539316da7144b319ea23bc7893c3da04d7c8126b7b6623ad",
+  "entries": 95912,
+  "dropped_fields": [
+   "validated"
+  ]
+ },
+ "architecture": {
+  "layers": "Embedding -> PadZero -> [Conv1D(k=5, relu) -> Dropout] x3 -> Conv1D(1) x2 relu -> Conv1D(1) -> logits(float32)",
+  "dropout_position": "after each k=5 conv (assumed: not visible in the 0.1.0 ONNX graph)",
+  "remask": true,
+  "output": "logits",
+  "head": "softmax",
+  "hidden": 128,
+  "n_conv": 3,
+  "kernel": 5,
+  "head_widths": [
+   128,
+   64
+  ],
+  "dropout": 0.4,
+  "maxlen": 64,
+  "params": {
+   "total": 212795,
+   "trainable": 211227,
+   "frozen": 1568
+  },
+  "letter_table": {
+   "variant": "e32-mirror-tied",
+   "grid": "runs/grid-v2",
+   "file": "slovorez-pretrain/runs/grid-v2/e32-mirror-tied/seed0/embedding.npy",
+   "sha256": "5382dd673c1d5a359ae9021be076c4cb6b1eeac1ca898ae242a751776f64fbb5",
+   "shape": [
+    49,
+    32
+   ],
+   "d": 32,
+   "trainable": false,
+   "ye_row_equals_e_row": true,
+   "vocab_fingerprint_training": "15ffc12a97be02d40891a83d42e6cc43d239d100965e56e832ef896649b0a842",
+   "vocab_fingerprint_exported": "4b6808315e0261d46b4f6dc3e94c3c9e0686fcb21255b5adce1a327013ff5b4f",
+   "exported_vocab_differs_in": "ё has the id of е"
+  }
+ },
+ "training": {
+  "loss": "sparse CE over non-<PAD> labels, batch sum / number of such positions",
+  "precision": "mixed_bfloat16",
+  "lr_schedule": "ReduceLROnPlateau on val_exact_viterbi (mode max): factor 0.5, patience 4, min_lr 1e-05, min_delta 0.0001, cooldown 0",
+  "shuffle": "per-epoch permutation numpy default_rng([seed, epoch])",
+  "early_stopping": "val_exact_viterbi, patience 10, best weights restored",
+  "decoder": "argmax and Viterbi (package lattice)",
+  "train_metrics": "separate eval-mode predict on 10000 train words (seed 0)",
+  "optimizer": "Adam",
+  "lr": 0.002,
+  "batch_size": 2048,
+  "epochs_max": 80,
+  "patience": 10,
+  "seed": 0,
+  "deterministic": true,
+  "best_epoch": 28,
+  "epochs_run": 38,
+  "lr_drops_at_epochs": [
+   21,
+   32,
+   36
+  ],
+  "lr_final": 0.0002500000118743628,
+  "monitor": "val_exact_viterbi",
+  "best_monitor": 0.7039295392953929,
+  "seconds_fit": 65.89388349908404,
+  "skipped_steps": 0,
+  "grad_norm": {
+   "median_of_epoch_medians": 0.2327002807713805,
+   "max": 2.5360616542511942,
+   "max_over_median": 10.898403929055771,
+   "max_from_epoch2": 0.9904778297526312,
+   "max_from_epoch2_over_median": 4.256453092661884
+  },
+  "data": {
+   "dictionary": {
+    "sha256": "20d8f3d10ffe4a53539316da7144b319ea23bc7893c3da04d7c8126b7b6623ad",
+    "pinned": true,
+    "frozen_sha256": "8bd0a98db7a41cbed1b98aa55d7b04a9afadf637fa31d8ab8e1c9c4c313ccb8a",
+    "changed": [
+     "иррадиация",
+     "иррадиировать",
+     "иррационализм",
+     "иррациональный",
+     "ирреальный",
+     "иррегулярный",
+     "ликбез"
+    ]
+   },
+   "inputs_sha256": {
+    "data/base_dict.json": "8bd0a98db7a41cbed1b98aa55d7b04a9afadf637fa31d8ab8e1c9c4c313ccb8a",
+    "data/cross_lexica.txt": "918bdc8a2d5dce76a5c33d6a17e943e6c04d7f2d3873581cadfb26c28ce9e9b3",
+    "data/lemmas_to_roots.tsv": "ddd9ebf92c7ac477d76583408331d309b7b972a60c8a3e493b592b259bf7b80e",
+    "data/root_groups.txt": "8aea7393a07c2979581beef1040eb585a9ffbe9c986dc425edd05c88437ea408",
+    "iterations/global/split_root.json": "7ff93a6dba2c9d0c2e827545f29e46ffde7d314f24fc7843f9a7f31a3a882ed2",
+    "iterations/global/split_random.json": "4c03212e473616b1ea94ab8d9caeeb9ee940f57a24d4b6c6c987258a030708d0",
+    "iterations/global/holdout.json": "f9631c57310cd940ef0031099ef3d86c16ea1c589ea52117dea629a35c3b94e7",
+    "iterations/000/revised_dict.json": "8bd0a98db7a41cbed1b98aa55d7b04a9afadf637fa31d8ab8e1c9c4c313ccb8a"
+   },
+   "fold_parts": {
+    "train_folds": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9
+    ],
+    "val_fold": 0,
+    "test_fold": null,
+    "test": "holdout",
+    "n_train": 80092,
+    "n_val": 7380,
+    "n_test": 5000,
+    "n_train_eval": 10000
+   },
+   "train_extra": {
+    "kind": "multiroot-disjoint",
+    "n": 13681,
+    "words_sha256": "c04376a9566052dcdd3031ab380d67dbd6ef39976a1d9335b4c802aa6e84ee5a",
+    "rule": "dictionary words outside split_root.json and outside the holdout, without roots of val"
+   },
+   "rule": "train = root folds 1-9 + multi-root words without roots of fold 0; val = root fold 0 (early stopping, LR plateau); test = the frozen holdout, measured once"
+  },
+  "run": "prod-training/0.2.0/results/final/final/root-fold9/seed0",
+  "git": {
+   "slovorez-train": {
+    "commit": "12929f2d216347ce4da44079976d66d17270a44d",
+    "dirty": false
+   },
+   "slovorez-pretrain": null,
+   "experiment": {
+    "commit": "a740c13f62c18d1dc2d74a31ee5ce5537a139e30",
+    "dirty": false
+   }
+  },
+  "versions": {
+   "python": "3.12.13",
+   "keras": "3.15.1",
+   "backend": "torch",
+   "numpy": "2.5.4",
+   "platform": "Windows-10-10.0.19045-SP0",
+   "torch": "2.14.1+cu130",
+   "cuda": "13.0",
+   "device": "NVIDIA GeForce RTX 5060 Ti",
+   "slovorez": null,
+   "dist:slovorez": "0.1.0",
+   "dist:slovorez-train": "0.1.0",
+   "dist:slovorez-pretrain": "0.4.0"
+  }
+ },
+ "export": {
+  "model": {
+   "path": "model.onnx",
+   "sha256": "cc7fb13aa4749ce7f8f52bfbef28be4f34a05d7e6141e3fdc0474b22aa08bbe4",
+   "bytes": 859549
+  },
+  "manifest_sha256": "4ce3100f4653ebe86b4cc8d1f78d41e88d5000ae6ada46963f57fe58e36fea3d",
+  "io": {
+   "inputs": [
+    [
+     "word",
+     [
+      "batch",
+      "length"
+     ],
+     "tensor(int32)"
+    ]
+   ],
+   "outputs": [
+    [
+     "morpheme",
+     [
+      "batch",
+      "length",
+      27
+     ],
+     "tensor(float)"
+    ]
+   ]
+  },
+  "yo_row_equals_e_row": true,
+  "versions": {
+   "keras": "3.15.1",
+   "torch": "2.14.1+cu130",
+   "onnx": "1.23.1",
+   "onnxruntime": "1.30.0"
+  },
+  "holdout": {
+   "n": 5000,
+   "tol": 1e-05,
+   "max_abs_diff_onnx_vs_keras_fp32": 1.1324882507324219e-06,
+   "max_abs_diff_batch1_vs_batch": 0.0,
+   "max_abs_diff_cut_to_longest_vs_padded_64": 8.940696716308594e-07,
+   "parses_onnx_equal_keras_fp32": 5000,
+   "parses_onnx_equal_saved_bf16": 4990,
+   "exact_onnx": 0.755,
+   "exact_keras_fp32": 0.755,
+   "exact_saved_bf16": 0.7542,
+   "exact_saved_bf16_from_oof_flags": 0.7542
+  },
+  "ok": true
+ },
+ "evaluation": {
+  "protocol": {
+   "new_roots": "CV by root groups (split_root.json), 10 folds, the final's recipe (transfer/ES-multiroot, seed 0), out-of-fold; mean and sd over folds",
+   "new_roots_in_compounds": "multi-root words held out by multiroot-disjoint in each fold (no model saw them), the same 10 models",
+   "known_roots": "frozen holdout (5 000 words, random regime: 82% of its words have only roots seen in training), the delivered ONNX float32 model, one measurement",
+   "decoder": "Viterbi, gold = base_dict-0.2.0",
+   "morozov_block": "measure_quality of Morozov et al. (2025): mq_*"
+  },
+  "new_roots_cv_root": {
+   "exact": {
+    "mean": 0.6941904349521879,
+    "sd": 0.018582015811448978,
+    "n": 10
+   },
+   "exact_bounds": {
+    "mean": 0.695613373629332,
+    "sd": 0.018618237521995755,
+    "n": 10
+   },
+   "boundary_f1": {
+    "mean": 0.9242272824245614,
+    "sd": 0.005782007192309883,
+    "n": 10
+   },
+   "root_f1": {
+    "mean": 0.704273383465518,
+    "sd": 0.01888503332635787,
+    "n": 10
+   },
+   "morph_f1": {
+    "mean": 0.8588684577372238,
+    "sd": 0.009539862313294267,
+    "n": 10
+   },
+   "char_acc": {
+    "mean": 0.8960781023275386,
+    "sd": 0.008227217281682709,
+    "n": 10
+   },
+   "f1_PREF": {
+    "mean": 0.8557330932962263,
+    "sd": 0.01287050896619658,
+    "n": 10
+   },
+   "f1_ROOT": {
+    "mean": 0.704273383465518,
+    "sd": 0.01888503332635787,
+    "n": 10
+   },
+   "f1_SUFF": {
+    "mean": 0.9113461549951885,
+    "sd": 0.006869277000576516,
+    "n": 10
+   },
+   "f1_END": {
+    "mean": 0.9944820628914259,
+    "sd": 0.0013092154256590962,
+    "n": 10
+   },
+   "f1_POSTFIX": {
+    "mean": 0.9984083757582545,
+    "sd": 0.0012549209835661082,
+    "n": 10
+   },
+   "f1_LINK": {
+    "mean": 0.02788513531570518,
+    "sd": 0.03423017916774062,
+    "n": 10
+   },
+   "f1_HYPH": {
+    "mean": 0.9918760518760518,
+    "sd": 0.01309903976654449,
+    "n": 10
+   },
+   "mq_boundary_f": {
+    "mean": 0.943065018869992,
+    "sd": 0.004267590807196984,
+    "n": 10
+   },
+   "mq_root_f": {
+    "mean": 0.8194846684569589,
+    "sd": 0.014495874672813864,
+    "n": 10
+   },
+   "mq_acc": {
+    "mean": 0.8960781023275386,
+    "sd": 0.008227217281682709,
+    "n": 10
+   },
+   "mq_wa": {
+    "mean": 0.6941904349521879,
+    "sd": 0.018582015811448978,
+    "n": 10
+   },
+   "ece": {
+    "mean": 0.20913727674444557,
+    "sd": 0.021288614669872336,
+    "n": 10
+   },
+   "ece_after": {
+    "mean": 0.036331558862838106,
+    "sd": 0.00914245518224671,
+    "n": 10
+   },
+   "aurc_excess": {
+    "mean": 0.09428863379556433,
+    "sd": 0.009939773622714629,
+    "n": 10
+   }
+  },
+  "new_roots_cv_root_folds": [
+   {
+    "exact": 0.6878048780487804,
+    "mq_boundary_f": 0.9427736252525847,
+    "mq_root_f": 0.825050505050505,
+    "mq_acc": 0.8952327537857544,
+    "mq_wa": 0.6878048780487804
+   },
+   {
+    "exact": 0.7288250440439084,
+    "mq_boundary_f": 0.9506425632325123,
+    "mq_root_f": 0.8469050986731326,
+    "mq_acc": 0.9102341959644514,
+    "mq_wa": 0.7288250440439084
+   },
+   {
+    "exact": 0.7093102046347743,
+    "mq_boundary_f": 0.9466521924553173,
+    "mq_root_f": 0.8212215181340164,
+    "mq_acc": 0.9021352811126969,
+    "mq_wa": 0.7093102046347743
+   },
+   {
+    "exact": 0.693318877896734,
+    "mq_boundary_f": 0.9435148880003106,
+    "mq_root_f": 0.8321749105877589,
+    "mq_acc": 0.8938758090902624,
+    "mq_wa": 0.693318877896734
+   },
+   {
+    "exact": 0.6778696300311695,
+    "mq_boundary_f": 0.9387269714397115,
+    "mq_root_f": 0.8098705501618123,
+    "mq_acc": 0.8908657219026238,
+    "mq_wa": 0.6778696300311695
+   },
+   {
+    "exact": 0.7070063694267515,
+    "mq_boundary_f": 0.9460856000779955,
+    "mq_root_f": 0.8237671786580436,
+    "mq_acc": 0.9031680115553951,
+    "mq_wa": 0.7070063694267515
+   },
+   {
+    "exact": 0.673261959615124,
+    "mq_boundary_f": 0.9366708780795957,
+    "mq_root_f": 0.7977854297481601,
+    "mq_acc": 0.8822299651567944,
+    "mq_wa": 0.673261959615124
+   },
+   {
+    "exact": 0.7067353299905136,
+    "mq_boundary_f": 0.9447015360684425,
+    "mq_root_f": 0.8248268441933966,
+    "mq_acc": 0.9014360681638641,
+    "mq_wa": 0.7067353299905136
+   },
+   {
+    "exact": 0.6704160455346253,
+    "mq_boundary_f": 0.9384335297457079,
+    "mq_root_f": 0.8078890683898762,
+    "mq_acc": 0.8882582223739616,
+    "mq_wa": 0.6704160455346253
+   },
+   {
+    "exact": 0.6873560102994986,
+    "mq_boundary_f": 0.9424484043477421,
+    "mq_root_f": 0.8053555809728857,
+    "mq_acc": 0.8933449941695819,
+    "mq_wa": 0.6873560102994986
+   }
+  ],
+  "new_roots_in_compounds": {
+   "exact": {
+    "mean": 0.4686450659345292,
+    "sd": 0.01706487751999498,
+    "n": 10
+   },
+   "folds": [
+    {
+     "fold": 0,
+     "n": 6044,
+     "exact": 0.4564857710125745,
+     "right_root_count": 0.7873924553275976,
+     "pred_ge2_roots": 0.822137657180675,
+     "pred_1_root": 0.17786234281932495
+    },
+    {
+     "fold": 1,
+     "n": 5336,
+     "exact": 0.4874437781109445,
+     "right_root_count": 0.7970389805097451,
+     "pred_ge2_roots": 0.8262743628185907,
+     "pred_1_root": 0.1737256371814093
+    },
+    {
+     "fold": 2,
+     "n": 5061,
+     "exact": 0.4696700256866232,
+     "right_root_count": 0.7729697688203913,
+     "pred_ge2_roots": 0.7998419284726339,
+     "pred_1_root": 0.20015807152736614
+    },
+    {
+     "fold": 3,
+     "n": 5835,
+     "exact": 0.47437874892887744,
+     "right_root_count": 0.790916880891174,
+     "pred_ge2_roots": 0.82382176520994,
+     "pred_1_root": 0.17617823479005998
+    },
+    {
+     "fold": 4,
+     "n": 5556,
+     "exact": 0.5044996400287977,
+     "right_root_count": 0.8111951043916487,
+     "pred_ge2_roots": 0.8425125989920806,
+     "pred_1_root": 0.15748740100791936
+    },
+    {
+     "fold": 5,
+     "n": 5770,
+     "exact": 0.47001733102253035,
+     "right_root_count": 0.7379549393414211,
+     "pred_ge2_roots": 0.7694974003466204,
+     "pred_1_root": 0.23050259965337955
+    },
+    {
+     "fold": 6,
+     "n": 6177,
+     "exact": 0.44730451675570665,
+     "right_root_count": 0.7071393880524527,
+     "pred_ge2_roots": 0.7430791646430306,
+     "pred_1_root": 0.2569208353569694
+    },
+    {
+     "fold": 7,
+     "n": 5150,
+     "exact": 0.4584466019417476,
+     "right_root_count": 0.7755339805825243,
+     "pred_ge2_roots": 0.8155339805825242,
+     "pred_1_root": 0.18446601941747573
+    },
+    {
+     "fold": 8,
+     "n": 5777,
+     "exact": 0.4644279037562749,
+     "right_root_count": 0.7659684957590445,
+     "pred_ge2_roots": 0.8061277479660723,
+     "pred_1_root": 0.19387225203392763
+    },
+    {
+     "fold": 9,
+     "n": 6501,
+     "exact": 0.4537763421012152,
+     "right_root_count": 0.7611136748192586,
+     "pred_ge2_roots": 0.8092601138286417,
+     "pred_1_root": 0.19073988617135826
+    }
+   ]
+  },
+  "known_roots_holdout": {
+   "onnx_float32": {
+    "exact": {
+     "mean": 0.755,
+     "sd": 0.0,
+     "n": 1
+    },
+    "exact_bounds": {
+     "mean": 0.757,
+     "sd": 0.0,
+     "n": 1
+    },
+    "boundary_f1": {
+     "mean": 0.9439376929553748,
+     "sd": 0.0,
+     "n": 1
+    },
+    "root_f1": {
+     "mean": 0.7921107847251363,
+     "sd": 0.0,
+     "n": 1
+    },
+    "morph_f1": {
+     "mean": 0.8931539580303345,
+     "sd": 0.0,
+     "n": 1
+    },
+    "char_acc": {
+     "mean": 0.9252846760716645,
+     "sd": 0.0,
+     "n": 1
+    },
+    "f1_PREF": {
+     "mean": 0.8975849731663684,
+     "sd": 0.0,
+     "n": 1
+    },
+    "f1_ROOT": {
+     "mean": 0.7921107847251363,
+     "sd": 0.0,
+     "n": 1
+    },
+    "f1_SUFF": {
+     "mean": 0.926634313445618,
+     "sd": 0.0,
+     "n": 1
+    },
+    "f1_END": {
+     "mean": 0.995180258338153,
+     "sd": 0.0,
+     "n": 1
+    },
+    "f1_POSTFIX": {
+     "mean": 0.9944341372912802,
+     "sd": 0.0,
+     "n": 1
+    },
+    "f1_LINK": {
+     "mean": 0.9239543726235743,
+     "sd": 0.0,
+     "n": 1
+    },
+    "f1_HYPH": {
+     "mean": 1.0,
+     "sd": 0.0,
+     "n": 1
+    },
+    "mq_boundary_f": {
+     "mean": 0.9569475836831343,
+     "sd": 0.0,
+     "n": 1
+    },
+    "mq_root_f": {
+     "mean": 0.8715065044062107,
+     "sd": 0.0,
+     "n": 1
+    },
+    "mq_acc": {
+     "mean": 0.9252846760716645,
+     "sd": 0.0,
+     "n": 1
+    },
+    "mq_wa": {
+     "mean": 0.755,
+     "sd": 0.0,
+     "n": 1
+    },
+    "ece": {
+     "mean": 0.26358672440255515,
+     "sd": 0.0,
+     "n": 1
+    },
+    "aurc_excess": {
+     "mean": 0.0565844911877129,
+     "sd": 0.0,
+     "n": 1
+    }
+   },
+   "keras_bf16": {
+    "exact": {
+     "mean": 0.7542,
+     "sd": 0.0,
+     "n": 1
+    },
+    "exact_bounds": {
+     "mean": 0.7562,
+     "sd": 0.0,
+     "n": 1
+    },
+    "boundary_f1": {
+     "mean": 0.9437405678587724,
+     "sd": 0.0,
+     "n": 1
+    },
+    "root_f1": {
+     "mean": 0.7912364643666583,
+     "sd": 0.0,
+     "n": 1
+    },
+    "morph_f1": {
+     "mean": 0.8927857012963397,
+     "sd": 0.0,
+     "n": 1
+    },
+    "char_acc": {
+     "mean": 0.9250514943064786,
+     "sd": 0.0,
+     "n": 1
+    },
+    "f1_PREF": {
+     "mean": 0.8972464741437206,
+     "sd": 0.0,
+     "n": 1
+    },
+    "f1_ROOT": {
+     "mean": 0.7912364643666583,
+     "sd": 0.0,
+     "n": 1
+    },
+    "f1_SUFF": {
+     "mean": 0.9265472196445141,
+     "sd": 0.0,
+     "n": 1
+    },
+    "f1_END": {
+     "mean": 0.995180258338153,
+     "sd": 0.0,
+     "n": 1
+    },
+    "f1_POSTFIX": {
+     "mean": 0.9944341372912802,
+     "sd": 0.0,
+     "n": 1
+    },
+    "f1_LINK": {
+     "mean": 0.9232720355104629,
+     "sd": 0.0,
+     "n": 1
+    },
+    "f1_HYPH": {
+     "mean": 1.0,
+     "sd": 0.0,
+     "n": 1
+    },
+    "mq_boundary_f": {
+     "mean": 0.9568002583909778,
+     "sd": 0.0,
+     "n": 1
+    },
+    "mq_root_f": {
+     "mean": 0.8713170486023671,
+     "sd": 0.0,
+     "n": 1
+    },
+    "mq_acc": {
+     "mean": 0.9250514943064786,
+     "sd": 0.0,
+     "n": 1
+    },
+    "mq_wa": {
+     "mean": 0.7542,
+     "sd": 0.0,
+     "n": 1
+    },
+    "ece": {
+     "mean": 0.26266818029837075,
+     "sd": 0.0,
+     "n": 1
+    },
+    "aurc_excess": {
+     "mean": 0.05646600728298436,
+     "sd": 0.0,
+     "n": 1
+    }
+   },
+   "by_roots": {
+    "seen_share": 0.8224,
+    "exact_seen": 0.7789396887159533,
+    "exact_unseen": 0.6396396396396397,
+    "n_seen": 4112,
+    "n_unseen": 888
+   }
+  },
+  "calibration": {
+   "method": "power",
+   "formula": "confidence = path_prob ** a",
+   "a": 0.397,
+   "a_fitted": 0.397,
+   "fit": {
+    "source": "transfer/ES-multiroot seed 0, folds 0-9 (out-of-fold, the final's regime)",
+    "criterion": "binary NLL of exact_viterbi under path_prob ** a",
+    "n": 73791,
+    "exact": 0.6941903484164735,
+    "ece_before": 0.20878962494152267,
+    "ece_after": 0.030231514861249864,
+    "aurc_before": 0.09452121423097808,
+    "aurc_after": 0.09452121423097808,
+    "mean_confidence_before": 0.48540072347495083,
+    "mean_confidence_after": 0.7009538714811614,
+    "a_first_half_folds": 0.387,
+    "a_second_half_folds": 0.407,
+    "ece_bins": "15 equal-width bins"
+   },
+   "holdout": {
+    "source": "final\\final\\root-fold9\\seed0",
+    "a_fitted_on_holdout": false,
+    "n": 5000,
+    "exact": 0.7542,
+    "ece_before": 0.26266817516548396,
+    "ece_after": 0.05129342183751301,
+    "aurc_before": 0.05646604870076506,
+    "aurc_after": 0.05646604870076506,
+    "mean_confidence_before": 0.491531824834516,
+    "mean_confidence_after": 0.7030058331379588
+   }
+  },
+  "confidence": {
+   "holdout": {
+    "n": 5000,
+    "exact": 0.7542,
+    "risk_coverage": {
+     "100": {
+      "coverage": 1.0,
+      "error": 0.2458,
+      "min_confidence": 3.63058e-06
+     },
+     "90": {
+      "coverage": 0.9,
+      "error": 0.2031111111111111,
+      "min_confidence": 0.0823355
+     },
+     "80": {
+      "coverage": 0.8,
+      "error": 0.16725,
+      "min_confidence": 0.153539
+     },
+     "70": {
+      "coverage": 0.7,
+      "error": 0.13228571428571428,
+      "min_confidence": 0.253448
+     },
+     "60": {
+      "coverage": 0.6,
+      "error": 0.10033333333333333,
+      "min_confidence": 0.359892
+     },
+     "50": {
+      "coverage": 0.5,
+      "error": 0.0672,
+      "min_confidence": 0.488279
+     },
+     "30": {
+      "coverage": 0.3,
+      "error": 0.029333333333333333,
+      "min_confidence": 0.727841
+     },
+     "10": {
+      "coverage": 0.1,
+      "error": 0.008,
+      "min_confidence": 0.908352
+     }
+    },
+    "thresholds_after": {
+     "0.9": {
+      "kept": 0.265,
+      "error_kept": 0.02490566037735853
+     },
+     "0.8": {
+      "kept": 0.435,
+      "error_kept": 0.05563218390804603
+     },
+     "0.7": {
+      "kept": 0.5594,
+      "error_kept": 0.08902395423668219
+     },
+     "0.6": {
+      "kept": 0.6784,
+      "error_kept": 0.12588443396226412
+     },
+     "0.5": {
+      "kept": 0.7782,
+      "error_kept": 0.1588280647648419
+     },
+     "0.4": {
+      "kept": 0.8716,
+      "error_kept": 0.19160165213400637
+     },
+     "0.3": {
+      "kept": 0.9422,
+      "error_kept": 0.2209721927403948
+     }
+    },
+    "ece_before": 0.26266817516548396,
+    "ece_after": 0.05129342183751301,
+    "aurc_excess": 0.05646604870076506
+   },
+   "oof_new_roots": {
+    "n": 73791,
+    "exact": 0.6941903484164735,
+    "risk_coverage": {
+     "100": {
+      "coverage": 1.0,
+      "error": 0.30580965158352647,
+      "min_confidence": 6.41604e-05
+     },
+     "90": {
+      "coverage": 0.9,
+      "error": 0.26641269650063243,
+      "min_confidence": 0.0839797
+     },
+     "80": {
+      "coverage": 0.8,
+      "error": 0.2334456998627886,
+      "min_confidence": 0.160806
+     },
+     "70": {
+      "coverage": 0.7,
+      "error": 0.20130096410732953,
+      "min_confidence": 0.25293
+     },
+     "60": {
+      "coverage": 0.6,
+      "error": 0.1724901185770751,
+      "min_confidence": 0.354819
+     },
+     "50": {
+      "coverage": 0.5,
+      "error": 0.14391803989592367,
+      "min_confidence": 0.474274
+     },
+     "30": {
+      "coverage": 0.3,
+      "error": 0.0861453674843023,
+      "min_confidence": 0.71186
+     },
+     "10": {
+      "coverage": 0.1,
+      "error": 0.03496408727469847,
+      "min_confidence": 0.907325
+     }
+    },
+    "thresholds_after": {
+     "0.9": {
+      "kept": 0.2475776178666775,
+      "error_kept": 0.07192511905413546
+     },
+     "0.8": {
+      "kept": 0.4210947134474394,
+      "error_kept": 0.1210697390017057
+     },
+     "0.7": {
+      "kept": 0.5554200376739711,
+      "error_kept": 0.15898499451018666
+     },
+     "0.6": {
+      "kept": 0.6749332574433197,
+      "error_kept": 0.19418119026584213
+     },
+     "0.5": {
+      "kept": 0.7845401200688431,
+      "error_kept": 0.22864989981344574
+     },
+     "0.4": {
+      "kept": 0.8791316014148067,
+      "error_kept": 0.2597114317425083
+     },
+     "0.3": {
+      "kept": 0.9444376685503653,
+      "error_kept": 0.28280552725603014
+     }
+    },
+    "ece_before": 0.20878962494152267,
+    "ece_after": 0.030231514861249864,
+    "aurc_excess": 0.09452121423097808
+   }
+  },
+  "speed": {
+   "model": {
+    "dir": "results/final/slovorez-flash",
+    "config_sha256": "88aa85e96683d96b5664450d2cad7014e86f7bf455a43a8021c2b5e6bd9fd7cb"
+   },
+   "machine": {
+    "cpu": "AMD Ryzen 7 5700X 8-Core Processor",
+    "logical_cpus": 16,
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.13",
+    "numpy": "2.5.4",
+    "onnxruntime": "1.30.0"
+   },
+   "protocol": {
+    "warmup_batches": 20,
+    "repeats": 30,
+    "words_per_repeat": {
+     "1": 256,
+     "64": 4096,
+     "1024": null
+    },
+    "bench_words": 10000,
+    "word_rule": "regex [а-яё]+(?:-[а-яё]+)* on the lower-cased text"
+   },
+   "levels": {
+    "1": {
+     "1": {
+      "network": {
+       "repeats": 30,
+       "words": 256,
+       "batches": 256,
+       "seconds_median": 0.02535374998115003,
+       "seconds_iqr": [
+        0.025328425166662782,
+        0.025391300092451274
+       ],
+       "words_per_s_median": 10097.125679251807,
+       "words_per_s_iqr": [
+        10082.193470515032,
+        10107.221365540983
+       ],
+       "ms_per_batch_median": 0.09903808586386731
+      },
+      "decoder": {
+       "repeats": 30,
+       "words": 256,
+       "batches": 256,
+       "seconds_median": 0.02861224999651313,
+       "seconds_iqr": [
+        0.028468825039453804,
+        0.028774550009984523
+       ],
+       "words_per_s_median": 8947.216665281401,
+       "words_per_s_iqr": [
+        8896.75077146889,
+        8992.29243374884
+       ],
+       "ms_per_batch_median": 0.11176660154887941
+      },
+      "full": {
+       "repeats": 30,
+       "words": 256,
+       "batches": 256,
+       "seconds_median": 0.0782187000149861,
+       "seconds_iqr": [
+        0.07783320010639727,
+        0.07850432506529614
+       ],
+       "words_per_s_median": 3272.8746444386366,
+       "words_per_s_iqr": [
+        3260.966829369865,
+        3289.0848590325254
+       ],
+       "ms_per_batch_median": 0.30554179693353944
+      }
+     },
+     "64": {
+      "network": {
+       "repeats": 30,
+       "words": 4096,
+       "batches": 64,
+       "seconds_median": 0.4319759000791237,
+       "seconds_iqr": [
+        0.4296705749584362,
+        0.43603554990841076
+       ],
+       "words_per_s_median": 9482.010453013116,
+       "words_per_s_iqr": [
+        9393.72948114062,
+        9532.884583488694
+       ],
+       "ms_per_batch_median": 6.749623438736307
+      },
+      "decoder": {
+       "repeats": 30,
+       "words": 4096,
+       "batches": 64,
+       "seconds_median": 0.1581666999263689,
+       "seconds_iqr": [
+        0.1573149499599822,
+        0.15935352502856404
+       ],
+       "words_per_s_median": 25896.727957950723,
+       "words_per_s_iqr": [
+        25703.855620801573,
+        26036.940551689087
+       ],
+       "ms_per_batch_median": 2.471354686349514
+      },
+      "full": {
+       "repeats": 30,
+       "words": 4096,
+       "batches": 64,
+       "seconds_median": 0.6503291499102488,
+       "seconds_iqr": [
+        0.6472227749763988,
+        0.6564566249144264
+       ],
+       "words_per_s_median": 6298.349075334058,
+       "words_per_s_iqr": [
+        6239.55924054227,
+        6328.578286123139
+       ],
+       "ms_per_batch_median": 10.161392967347638
+      }
+     },
+     "1024": {
+      "network": {
+       "repeats": 30,
+       "words": 10000,
+       "batches": 10,
+       "seconds_median": 1.1565158000448719,
+       "seconds_iqr": [
+        1.1521450749132782,
+        1.1609351500519551
+       ],
+       "words_per_s_median": 8646.660944547413,
+       "words_per_s_iqr": [
+        8613.745564989114,
+        8679.462524068593
+       ],
+       "ms_per_batch_median": 115.65158000448719
+      },
+      "decoder": {
+       "repeats": 30,
+       "words": 10000,
+       "batches": 10,
+       "seconds_median": 0.16913499997463077,
+       "seconds_iqr": [
+        0.16897984989918768,
+        0.16949037491576746
+       ],
+       "words_per_s_median": 59124.36811718414,
+       "words_per_s_iqr": [
+        59000.4004945399,
+        59178.65358482646
+       ],
+       "ms_per_batch_median": 16.913499997463077
+      },
+      "full": {
+       "repeats": 30,
+       "words": 10000,
+       "batches": 10,
+       "seconds_median": 1.4688315000385046,
+       "seconds_iqr": [
+        1.462158574955538,
+        1.475197774998378
+       ],
+       "words_per_s_median": 6808.132859172652,
+       "words_per_s_iqr": [
+        6778.75208970607,
+        6839.2034703240615
+       ],
+       "ms_per_batch_median": 146.88315000385046
+      }
+     }
+    },
+    "8": {
+     "1": {
+      "network": {
+       "repeats": 30,
+       "words": 256,
+       "batches": 256,
+       "seconds_median": 0.024578350014053285,
+       "seconds_iqr": [
+        0.02272639994043857,
+        0.026233750104438514
+       ],
+       "words_per_s_median": 10415.67069610554,
+       "words_per_s_iqr": [
+        9758.421841362555,
+        11264.432583731947
+       ],
+       "ms_per_batch_median": 0.09600917974239565
+      },
+      "decoder": {
+       "repeats": 30,
+       "words": 256,
+       "batches": 256,
+       "seconds_median": 0.02861815015785396,
+       "seconds_iqr": [
+        0.028502575063612312,
+        0.029424175096210092
+       ],
+       "words_per_s_median": 8945.372030964181,
+       "words_per_s_iqr": [
+        8700.328867774222,
+        8981.64462083362
+       ],
+       "ms_per_batch_median": 0.11178964905411704
+      },
+      "full": {
+       "repeats": 30,
+       "words": 256,
+       "batches": 256,
+       "seconds_median": 0.0888318499783054,
+       "seconds_iqr": [
+        0.08290772489272058,
+        0.09544357494451106
+       ],
+       "words_per_s_median": 2881.8492473422602,
+       "words_per_s_iqr": [
+        2682.2130263753547,
+        3087.770172577455
+       ],
+       "ms_per_batch_median": 0.34699941397775547
+      }
+     },
+     "64": {
+      "network": {
+       "repeats": 30,
+       "words": 4096,
+       "batches": 64,
+       "seconds_median": 0.24852399993687868,
+       "seconds_iqr": [
+        0.24410787498345599,
+        0.25227440003072843
+       ],
+       "words_per_s_median": 16481.305632616255,
+       "words_per_s_iqr": [
+        16236.28873758528,
+        16779.466865940314
+       ],
+       "ms_per_batch_median": 3.8831874990137294
+      },
+      "decoder": {
+       "repeats": 30,
+       "words": 4096,
+       "batches": 64,
+       "seconds_median": 0.15596664999611676,
+       "seconds_iqr": [
+        0.15553669998189434,
+        0.15658759989310056
+       ],
+       "words_per_s_median": 26262.024606555195,
+       "words_per_s_iqr": [
+        26157.882251188876,
+        26334.620706732272
+       ],
+       "ms_per_batch_median": 2.4369789061893243
+      },
+      "full": {
+       "repeats": 30,
+       "words": 4096,
+       "batches": 64,
+       "seconds_median": 0.5203903500223532,
+       "seconds_iqr": [
+        0.505135599989444,
+        0.5323009749990888
+       ],
+       "words_per_s_median": 7871.014517898069,
+       "words_per_s_iqr": [
+        7694.894791442025,
+        8108.713779202249
+       ],
+       "ms_per_batch_median": 8.13109921909927
+      }
+     },
+     "1024": {
+      "network": {
+       "repeats": 30,
+       "words": 10000,
+       "batches": 10,
+       "seconds_median": 0.6227569499751553,
+       "seconds_iqr": [
+        0.6063974750577472,
+        0.6361986749107018
+       ],
+       "words_per_s_median": 16057.628903858797,
+       "words_per_s_iqr": [
+        15718.360308442361,
+        16490.833836416783
+       ],
+       "ms_per_batch_median": 62.27569499751553
+      },
+      "decoder": {
+       "repeats": 30,
+       "words": 10000,
+       "batches": 10,
+       "seconds_median": 0.1687302499776706,
+       "seconds_iqr": [
+        0.1678940499550663,
+        0.16902025003219023
+       ],
+       "words_per_s_median": 59266.195607031805,
+       "words_per_s_iqr": [
+        59164.50838343619,
+        59561.3722027452
+       ],
+       "ms_per_batch_median": 16.87302499776706
+      },
+      "full": {
+       "repeats": 30,
+       "words": 10000,
+       "batches": 10,
+       "seconds_median": 1.0088052500505,
+       "seconds_iqr": [
+        0.9873684749472886,
+        1.0350467248936184
+       ],
+       "words_per_s_median": 9912.716056443409,
+       "words_per_s_iqr": [
+        9661.399586601074,
+        10127.931216898389
+       ],
+       "ms_per_batch_median": 100.88052500505
+      }
+     }
+    }
+   },
+   "load_s": {
+    "1": 0.010101400082930923,
+    "8": 0.02214270015247166
+   },
+   "corpus": {
+    "file": "slovorez-data/linked/pretrain-corpus/all_books.txt",
+    "chars": 23196544,
+    "words": 3570962,
+    "unique": 196257,
+    "rule": "regex [а-яё]+(?:-[а-яё]+)* on the lower-cased text",
+    "longer_than_maxlen": 0,
+    "package_tokenizer": {
+     "words": 2711664,
+     "unique": 170242,
+     "note": "slovorez 0.1.0 FTTokenizer(RUWORD, max_len 64): stops for good at the first word of 9+ hyphen-separated parts (here 'Сла-ва-ва-вав-…' at char 17 561 110 of 23 196 544, Bulgakov); 8 parts pass (= C1 of the package review: TokenContext.tokens[16]). Up to that point it agrees with the regex rule within 0.02%."
+    },
+    "unique_forms": {
+     "1": {
+      "repeats": 3,
+      "words": 196257,
+      "batches": 192,
+      "seconds_median": 19.841105800122023,
+      "seconds_iqr": [
+       19.483882500091568,
+       20.033149700029753
+      ],
+      "words_per_s_median": 9891.43457915501,
+      "words_per_s_iqr": [
+       9796.612262110162,
+       10072.787084354346
+      ],
+      "ms_per_batch_median": 103.33909270896886
+     },
+     "8": {
+      "repeats": 3,
+      "words": 196257,
+      "batches": 192,
+      "seconds_median": 15.921980599872768,
+      "seconds_iqr": [
+       15.717668349971063,
+       16.189815749879926
+      ],
+      "words_per_s_median": 12326.167512198092,
+      "words_per_s_iqr": [
+       12122.250372210416,
+       12486.394014056246
+      ],
+      "ms_per_batch_median": 82.926982291004
+     }
+    },
+    "real": {
+     "1": {
+      "tokenize_s": 0.6919748999644071,
+      "model_s": 19.57847259985283,
+      "join_s": 0.37304390012286603,
+      "total_s": 20.643491399940103,
+      "words": 3570962,
+      "unique": 196257,
+      "words_per_s": 172982.4636161285,
+      "repeats": 3,
+      "dedup_hit_rate": 0.9450408601379684
+     },
+     "8": {
+      "tokenize_s": 0.7242364000994712,
+      "model_s": 16.24877449986525,
+      "join_s": 0.38734810007736087,
+      "total_s": 17.36035900004208,
+      "words": 3570962,
+      "unique": 196257,
+      "words_per_s": 205696.32229329727,
+      "repeats": 3,
+      "dedup_hit_rate": 0.9450408601379684
+     }
+    }
+   },
+   "adapters": [
+    {
+     "adapter": "slovorez 0.1.0 (slovorez-test, package Viterbi)",
+     "batch": 1024,
+     "full": {
+      "repeats": 30,
+      "words": 10000,
+      "batches": 10,
+      "seconds_median": 4.0904053000267595,
+      "seconds_iqr": [
+       4.072961675003171,
+       4.111144374939613
+      ],
+      "words_per_s_median": 2444.745512121887,
+      "words_per_s_iqr": [
+       2432.412751290664,
+       2455.215835045198
+      ],
+      "ms_per_batch_median": 409.04053000267595
+     },
+     "threads": 1,
+     "note": "another model (0.1.0): parses are not expected to match the reference"
+    },
+    {
+     "adapter": "slovorez 0.1.0 (slovorez-test, package Viterbi)",
+     "batch": 1024,
+     "full": {
+      "repeats": 30,
+      "words": 10000,
+      "batches": 10,
+      "seconds_median": 2.098182149929926,
+      "seconds_iqr": [
+       2.0716000500833616,
+       2.1355862998752855
+      ],
+      "words_per_s_median": 4766.030442273077,
+      "words_per_s_iqr": [
+       4682.554856520658,
+       4827.186598879257
+      ],
+      "ms_per_batch_median": 209.81821499299258
+     },
+     "threads": 8,
+     "note": "another model (0.1.0): parses are not expected to match the reference"
+    }
+   ],
+   "reference_parses_sha256": "ddc0b10717aae44fa6e4a29425bea5b1662bd5a764abdc78f7522cec38d0d448"
+  },
+  "report": "prod-training/0.2.0/results/final/report-final.md"
+ },
+ "selection": {
+  "decisions": {
+   "DECISION-arch.md": "cdfd9a0b2f27d44331bd4a4944b000c0ab72b58cc588ea9c3bc738ea0e1c0ef5",
+   "DECISION.md": "fc8e6d9f4231cd7ff0ceb9ca5e4fc434da2bc8f26ba0454ff291971c3d57527d",
+   "DECISION-transfer.md": "e0bf826b7caaafba6129bc37ad4d374618821c55996c32e9f382b0aec8e921ef",
+   "DECISION-capacity.md": "421d18be0ac72b6ec37061abeb0c84b2b933518e793edda4d62a3bf7f581016a",
+   "DECISION-final.md": "9460d72a81d4a06487a1ffa4a9af88c90d68d755638fe75956df6454ac9c8697"
+  },
+  "arch": "W128D3 (DECISION-arch.md)",
+  "loss": "R0: CE, softmax, Viterbi (DECISION.md)",
+  "multiroot": "multi-root words in train, disjoint by the roots of the val fold (George 10.11, DECISION-capacity.md)",
+  "confidence": "path_prob ** a, a fitted on out-of-fold pairs of the final's recipe (calibration)"
+ },
+ "notes": [
+  "A lemma model (scope lemmas): trained on dictionary forms; inflected word forms are segmented worse.",
+  "Known roots (holdout) 75.5% exact is the delivered model stopped on new roots (val = root fold 0), not the ceiling of the random regime: A0/A8 trained on random folds reach 84.9/84.6 on the same holdout."
+ ]
+}

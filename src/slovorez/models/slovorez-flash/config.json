@@ -1,0 +1,169 @@
+{
+ "schema_version": 2,
+ "min_slovorez": "0.2.0",
+ "name": "slovorez-flash",
+ "version": "0.2.0",
+ "scope": "lemmas",
+ "domain": "general",
+ "resources": {
+  "weights": {
+   "file": "model.onnx",
+   "sha256": "cc7fb13aa4749ce7f8f52bfbef28be4f34a05d7e6141e3fdc0474b22aa08bbe4"
+  },
+  "base_dict": {
+   "file": "base_dict.json",
+   "sha256": "2083dc361f44a5aa927bf1999879bad5867602fc24c125b1e85478f4ec9b9092"
+  },
+  "passport": {
+   "file": "passport.json"
+  }
+ },
+ "normalization": [
+  "lowercase",
+  "yo_to_e"
+ ],
+ "io": {
+  "minlen": 1,
+  "maxlen": 64,
+  "inputs": [
+   {
+    "name": "word",
+    "dtype": "int32",
+    "shape": [
+     "batch",
+     "length"
+    ]
+   }
+  ],
+  "outputs": [
+   {
+    "name": "morpheme",
+    "kind": "probs",
+    "dtype": "float32",
+    "shape": [
+     "batch",
+     "length",
+     "labels"
+    ]
+   }
+  ],
+  "padding_side": "right"
+ },
+ "mapping": {
+  "label2id": {
+   "<PAD>": 0,
+   "<UNK>": 1,
+   "B-PREF": 2,
+   "I-PREF": 3,
+   "E-PREF": 4,
+   "S-PREF": 5,
+   "B-ROOT": 6,
+   "I-ROOT": 7,
+   "E-ROOT": 8,
+   "S-ROOT": 9,
+   "B-SUFF": 10,
+   "I-SUFF": 11,
+   "E-SUFF": 12,
+   "S-SUFF": 13,
+   "B-END": 14,
+   "I-END": 15,
+   "E-END": 16,
+   "S-END": 17,
+   "B-POSTFIX": 18,
+   "I-POSTFIX": 19,
+   "E-POSTFIX": 20,
+   "S-POSTFIX": 21,
+   "B-LINK": 22,
+   "I-LINK": 23,
+   "E-LINK": 24,
+   "S-LINK": 25,
+   "S-HYPH": 26
+  },
+  "tokenizer_vocab": {
+   "<PAD>": 0,
+   "<UNK>": 1,
+   "EOW": 2,
+   "MASK": 3,
+   "а": 4,
+   "б": 5,
+   "в": 6,
+   "г": 7,
+   "д": 8,
+   "е": 9,
+   "ё": 9,
+   "ж": 11,
+   "з": 12,
+   "и": 13,
+   "й": 14,
+   "к": 15,
+   "л": 16,
+   "м": 17,
+   "н": 18,
+   "о": 19,
+   "п": 20,
+   "р": 21,
+   "с": 22,
+   "т": 23,
+   "у": 24,
+   "ф": 25,
+   "х": 26,
+   "ц": 27,
+   "ч": 28,
+   "ш": 29,
+   "щ": 30,
+   "ъ": 31,
+   "ы": 32,
+   "ь": 33,
+   "э": 34,
+   "ю": 35,
+   "я": 36,
+   "0": 37,
+   "1": 38,
+   "2": 39,
+   "3": 40,
+   "4": 41,
+   "5": 42,
+   "6": 43,
+   "7": 44,
+   "8": 45,
+   "9": 46,
+   " ": 47,
+   "-": 48
+  },
+  "vocab_fingerprint": "4b6808315e0261d46b4f6dc3e94c3c9e0686fcb21255b5adce1a327013ff5b4f",
+  "char_pad_id": 0,
+  "label_pad_id": 0,
+  "morpheme_types": {
+   "PREF": 2,
+   "ROOT": 3,
+   "SUFF": 4,
+   "END": 5,
+   "POSTFIX": 6,
+   "LINK": 7,
+   "HYPH": 8
+  }
+ },
+ "decoder": {
+  "method": "viterbi",
+  "constraints": {
+   "forbidden_starts": [
+    "END",
+    "SUFF",
+    "PAD",
+    "LINK",
+    "HYPH"
+   ],
+   "forbidden_ends": [
+    "PAD",
+    "PREF",
+    "LINK",
+    "HYPH"
+   ]
+  },
+  "transitions": null
+ },
+ "calibration": {
+  "method": "power",
+  "a": 0.397
+ }
+}

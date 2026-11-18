@@ -2,141 +2,119 @@
 
 English · [Русский](README.ru.md)
 
-**Slovorez** is a neural library for morpheme segmentation of the Russian language: it splits a word into prefix, root, suffix and ending. Inference runs on CPU via ONNX Runtime — no GPU and no heavy dependencies — while the lexer core is written in C++. A lightweight model (~0.69M parameters) makes it suitable for production and edge use.
+Slovorez does morpheme segmentation of Russian words. The model has 215K parameters and runs on CPU through ONNX Runtime. The tokenizer is written in C++.
 
-## Features
+The model was trained on lemmas. Support for inflected forms is planned for future versions, see "Limitations".
 
-- Morpheme segmentation into classes: prefix, root, suffix, ending, postfix
-- CPU inference via ONNX, no GPU required
-- C++ tokenizer with pybind11 bindings
-- Batch file processing with caching of already-segmented words
-
-## Quick start
+## Example
 
 ```python
 from slovorez import Slovorez
 
-model = Slovorez.from_pretrained("models/slovorez-test")
-model.predict("Приставки и суффиксы выделяются автоматически.")
+model = Slovorez.from_pretrained()          # bundled model slovorez-flash
+model.predict("перевыполнить, улыбаться")
 ```
 
 ```python
-[{'word': 'приставки',     'morphemes': [Morpheme('при', PREF, 0.61), Morpheme('став', ROOT, 0.78), Morpheme('к', SUFF, 0.71), Morpheme('и', END, 0.96)]},
- {'word': 'и',             'morphemes': [Morpheme('и', END, 0.54)]},
- {'word': 'суффиксы',      'morphemes': [Morpheme('суффикс', ROOT, 0.82), Morpheme('ы', END, 0.95)]},
- {'word': 'выделяются',    'morphemes': [Morpheme('вы', PREF, 0.93), Morpheme('дел', ROOT, 0.93), Morpheme('я', SUFF, 0.84), Morpheme('ют', SUFF, 0.79), Morpheme('ся', POSTFIX, 0.99)]},
- {'word': 'автоматически', 'morphemes': [Morpheme('автомат', ROOT, 0.73), Morpheme('ическ', SUFF, 0.80), Morpheme('и', SUFF, 0.76)]}]
+[{'word': 'перевыполнить',
+  'morphemes': [['пере', 'PREF', 0.99], ['вы', 'PREF', 0.96], ['полн', 'ROOT', 0.99],
+                ['и', 'SUFF', 1.0], ['ть', 'SUFF', 1.0]],
+  'confidence': 0.95,
+  'model': 'slovorez-flash'},
+ {'word': 'улыбаться',
+  'morphemes': [['улыб', 'ROOT', 0.86], ['а', 'SUFF', 0.99], ['ть', 'SUFF', 1.0],
+                ['ся', 'POSTFIX', 1.0]],
+  'confidence': 0.77,
+  'model': 'slovorez-flash'}]
 ```
 
-Each morpheme is a `Morpheme(text, type, score)`.
+- `morphemes`: a list of `[text, type, score]`.
+- `confidence`: confidence in the parse of the whole word, from 0 to 1.
+- Words are lowercased and kept in text order, duplicates included. Only Cyrillic is parsed.
 
-Morpheme classes:
+Morpheme types:
 
-| class | meaning |
+| type | meaning |
 |---|---|
 | PREF | prefix |
 | ROOT | root |
 | SUFF | suffix |
 | END | ending (inflection) |
 | POSTFIX | postfix |
-| LINK | linking morpheme (interfix) |
+| LINK | linking vowel (interfix) |
 | HYPH | hyphen |
 
-You can pass text in any language — Slovorez extracts and segments only Russian words, preserving their order.
+The Viterbi decoder only allows valid transitions between morphemes.
 
-### Decoding
-
-By default, predictions are decoded with greedy argmax. Pass `use_viterbi=True` for constrained BIES decoding, which enforces valid label transitions and improves boundary consistency:
+## Large files
 
 ```python
-model.predict("...", use_viterbi=True)
+model.process_file("text.txt")                     # single thread
+model.process_file("text.txt", threaded_mode=True) # inference in several threads
 ```
 
-## Quality
+Results are appended to a jsonl file, one record per line, in the same format as `predict`. By default the file is `~/.cache/slovorez/predictions/<model>/<version>/predictions.jsonl`. `SLOVOREZ_HOME` changes the folder; `from_pretrained(predictions_path=...)` sets the file.
 
-Slovorez (Sq NoRoPE, ~0.69M parameters) on the Revised RuMorphsLemmas test set, under two splits:
+Words already in the file from earlier runs are skipped, so an interrupted run can be started again. Words are deduplicated before segmentation.
 
-- **Random split** — word forms split randomly; test roots may also occur in training.
-- **Root split** — split by roots, so test roots are unseen in training (OOV) — the harder, generalization setting.
-
-| Split | Boundary F1 | Root F1 | Accuracy | Word Acc |
-|---|---|---|---|---|
-| Random | 95.95 | 91.77 | 95.22 | 80.51 |
-| Root (OOV) | 91.83 | 83.59 | 90.12 | 64.32 |
-
-*Boundary F1 — F1 over all morpheme boundaries; Root F1 — F1 over root boundaries; Accuracy — character-level; Word Acc — share of fully correct words.*
-
-## Performance
-
-Benchmarks on a corpus of Russian classic literature: ~3.6M tokens total, of which ~1.71M are Russian words (~150K unique forms); the rest are punctuation and non-Russian tokens, which the tokenizer skips. *Pure inference* runs the full pipeline (C++ tokenizer → dedup → ONNX inference → JSONL writer) over the ~150K unique forms; *real corpus* runs the whole corpus with the `SeenIndex` cache, which — by Zipf's law — turns repeats into cache hits (~91% hit rate here).
-
-**Pure inference — ~150K unique word forms (words/s):**
-
-| Configuration | 1 worker | 4 workers |
-|---|---|---|
-| CPU — Ryzen 7 5700X | ~13,200 | ~17,600 |
-| GPU — RTX 5060 Ti | ~19,500 | ~23,000 |
-
-**Real corpus — ~1.71M Russian words, sequential with cache (words/s):**
-
-| Configuration | Decoder | Throughput |
-|---|---|---|
-| CPU — Ryzen 7 5700X | argmax | ~141,000 |
-| CPU — Ryzen 7 5700X | Viterbi | ~67,000 |
-| GPU — RTX 5060 Ti (batch 2048) | argmax | ~246,000 |
+Words from the model's bundled dictionary (`base_dict.json`, ≈96K lemmas) are not segmented by `process_file` and are not written to the jsonl: the dictionary already has their parses.
 
 ## Installation
 
-```bash
-cd slovorez/
-conda activate <your_env>
-
-# CPU (recommended)
-pip install slovorez[cpu]
-```
-
-Demo:
+0.2.0 is on GitHub only for now:
 
 ```bash
-python -m src.main
+pip install git+https://github.com/heysonanderson/slovorez
 ```
 
-### GPU (optional, for advanced users)
+The tokenizer is compiled during installation, so you need a C++ compiler (MSVC Build Tools on Windows). Python 3.10+.
 
-CPU is the default, recommended.
+## Quality
 
-If you specifically want CUDA execution:
+slovorez-flash, Viterbi decoder. Metrics from `measure_quality` of Morozov et al. (2025), gold standard: `base_dict` 0.2.0.
 
-```bash
-pip install slovorez[gpu]
-```
+| Test | Boundary F1 | Root F1 | Accuracy | Word Acc |
+|---|---|---|---|---|
+| Known roots (5,000 held-out words) | 95.69 | 87.15 | 92.53 | 75.50 |
+| New roots (10 folds by root group) | 94.31 ± 0.43 | 81.95 ± 1.45 | 89.61 ± 0.82 | 69.42 ± 1.86 |
 
-GPU support is provided **as-is** and is intended for users who manage their own CUDA/cuDNN stack. `onnxruntime-gpu` does **not** bundle CUDA or cuDNN — you are responsible for providing compatible runtime libraries and putting them on the library search path. Start here:
+Boundary F1: over all morpheme boundaries. Root F1: over root boundaries. Accuracy: per character. Word Acc: share of words parsed fully correctly. In the second row the test roots were never seen in training; values are mean ± standard deviation over folds.
 
-- ONNX Runtime CUDA execution provider: <https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html>
-- ONNX Runtime install / version matrix: <https://onnxruntime.ai/docs/install/>
+0.1.0 used a different model and a different test set.
 
-If your CUDA/cuDNN stack doesn't match ONNX Runtime's requirements, ORT falls back to CPU. The simplest way to avoid manual DLL setup is to install a PyTorch build compiled against the same major CUDA version as ONNX Runtime — ORT then reuses PyTorch's CUDA/cuDNN libraries automatically.
+## Speed
+
+Benchmarks are being redone. The 0.1.0 numbers were removed: the method wasn't recorded and they don't reproduce.
+
+## Limitations
+
+Tested with the suite in `tests/` and on text corpora on one machine (Windows). Not tested under production load or on low-end devices.
+
+- The model was trained on lemmas. Inflected forms come out worse, e.g. `выделяются` → `вы|дел|я|ютс|я`.
+- Words longer than 64 characters are skipped without a warning.
+- Tokenizer (C++): a chain of 9 or more hyphenated parts, or a word longer than 128 characters, loses all the text after it.
+- A hyphenated word at the very end of a file, with no newline after it, can be lost. `predict` works around this.
+- If `process_file` raises, create the object again with `from_pretrained`. Words written before the error are kept.
+- The order of records in the jsonl depends on `PYTHONHASHSEED`.
 
 ## How it works
 
-The architecture is a Conv1D network with sequence labeling in the BIES scheme (morpheme boundaries as token labels). Tokenization and the lexer are implemented in C++; inference runs through ONNX Runtime on CPU.
+For each letter the model predicts a BIES tag (beginning, inside, end of a morpheme, or a single-letter morpheme) together with the morpheme type. Network: letter embeddings, three Conv1D layers (kernel 5), a head of 1×1 convolutions. The C++ tokenizer is bound through pybind11; inference runs through ONNX Runtime.
 
 ## License
 
-MIT License. Copyright (c) 2026 heysonanderson, pubari. See [LICENSE](LICENSE).
+MIT. Copyright (c) 2026 heysonanderson, pubari. See [LICENSE](LICENSE).
 
 ## Citation
 
-If you use Slovorez in your research, please cite it via the [CITATION.cff](CITATION.cff)
-file in this repository.
+See [CITATION.cff](CITATION.cff).
 
 ```bibtex
 @software{slovorez,
   author  = {heysonanderson and pubari},
   title   = {Slovorez: neural morpheme segmentation for Russian},
   year    = {2026},
-  version = {0.1.0},
+  version = {0.2.0},
   url     = {https://github.com/heysonanderson/slovorez},
   license = {MIT}
 }

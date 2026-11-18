@@ -84,7 +84,16 @@ Boundary F1: over all morpheme boundaries. Root F1: over root boundaries. Accura
 
 ## Speed
 
-Benchmarks are being redone. The 0.1.0 numbers were removed: the method wasn't recorded and they don't reproduce.
+1M sentences of Russian news (Leipzig `rus_news_2023_1M`, 13.8M tokens), AMD Ryzen 7 5700X, Windows 10. `process_file` columns are tokens per second. 0.1.0 runs with `use_viterbi=True`, so both versions use the same decoder.
+
+| | `process_file`, 1 thread | `process_file`, 8 workers | `predict`, ms | load, s | memory, MB |
+|---|---|---|---|---|---|
+| slovorez 0.1.0 | 152K | 94K | 2.60 | 0.51 | 283 |
+| slovorez 0.2.0 | **210K** | **396K** | **1.75** | **0.42** | **244** |
+
+`predict`: median time for one sentence. Load: `from_pretrained`. Memory: peak process memory.
+
+Throughput depends on corpus size, because each unique word goes to the model only once. The upper limit is the tokenizer, about 630K tokens/s. Full tables (100K and 1M sentences, 2/4/8 workers, model-only speed, p95), the environment and the method are in [bench/README.md](bench/README.md).
 
 ## Limitations
 

@@ -1,6 +1,6 @@
 # Slovorez
 
-English · [Русский](README.ru.md)
+English · [Русский](https://github.com/heysonanderson/slovorez/blob/master/README.ru.md)
 
 Slovorez does morpheme segmentation of Russian words. The model has 215K parameters and runs on CPU through ONNX Runtime. The tokenizer is written in C++.
 
@@ -65,7 +65,7 @@ Words from the model's bundled dictionary (`base_dict.json`, ≈96K lemmas) are 
 pip install slovorez
 ```
 
-The tokenizer is compiled during installation, so you need a C++ compiler (MSVC Build Tools on Windows). Python 3.10+.
+Ready-made wheels cover Python 3.10–3.13 on Linux, Windows and macOS (Apple Silicon). On other platforms and Python versions pip builds the tokenizer from source, which needs a C++ compiler (MSVC Build Tools on Windows). Python 3.10+.
 
 ## Quality
 
@@ -91,7 +91,7 @@ Boundary F1: over all morpheme boundaries. Root F1: over root boundaries. Accura
 
 `predict`: median time for one sentence. Load: `from_pretrained`. Memory: peak process memory.
 
-Throughput depends on corpus size, because each unique word goes to the model only once. The upper limit is the tokenizer, about 630K tokens/s. Full tables (100K and 1M sentences, 2/4/8 workers, model-only speed, p95), the environment and the method are in [bench/README.md](bench/README.md).
+Throughput depends on corpus size, because each unique word goes to the model only once. The upper limit is the tokenizer, about 630K tokens/s. Full tables (100K and 1M sentences, 2/4/8 workers, model-only speed, p95), the environment and the method are in [bench/README.md](https://github.com/heysonanderson/slovorez/blob/master/bench/README.md).
 
 ## Confidence
 

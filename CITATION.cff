@@ -5,7 +5,7 @@ authors:
   - name: pubari
 title: 'Slovorez: neural morpheme segmentation for Russian'
 version: 0.2.0
-date-released: 2026-07-16
+date-released: 2026-11-18
 url: https://github.com/heysonanderson/slovorez
 license: MIT
 keywords:

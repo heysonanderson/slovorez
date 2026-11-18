@@ -61,10 +61,8 @@ Words from the model's bundled dictionary (`base_dict.json`, ≈96K lemmas) are 
 
 ## Installation
 
-0.2.0 is on GitHub only for now:
-
 ```bash
-pip install git+https://github.com/heysonanderson/slovorez
+pip install slovorez
 ```
 
 The tokenizer is compiled during installation, so you need a C++ compiler (MSVC Build Tools on Windows). Python 3.10+.
@@ -94,6 +92,19 @@ Boundary F1: over all morpheme boundaries. Root F1: over root boundaries. Accura
 `predict`: median time for one sentence. Load: `from_pretrained`. Memory: peak process memory.
 
 Throughput depends on corpus size, because each unique word goes to the model only once. The upper limit is the tokenizer, about 630K tokens/s. Full tables (100K and 1M sentences, 2/4/8 workers, model-only speed, p95), the environment and the method are in [bench/README.md](bench/README.md).
+
+## Confidence
+
+`confidence` estimates the chance that the whole word is parsed correctly. On the test words from the Quality section, keeping only words above a threshold gives:
+
+| Threshold | Words kept | word accuracy, random/root |
+|---|---|---|
+| none | 100% | 75.5% / 69.4% |
+| 0.7 | 56% | 91.1% / 84.1% |
+| 0.8 | 43% | 94.5% / 87.9% |
+| 0.9 | 26% | 97.6% / 92.8% |
+
+On new roots `confidence` is slightly too high above 0.7. This is measured on lemmas; on word forms from real text `confidence` is lower.
 
 ## Limitations
 
